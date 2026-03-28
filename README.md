@@ -38,7 +38,7 @@
 ├── config.example.docker.yaml Docker 示例配置
 ├── Dockerfile             容器镜像构建文件
 ├── compose.yaml           本地 / 远程镜像运行示例
-└── config.yaml            实际运行配置（本地生成，不提交）
+└── config.yaml            实际运行配置（从示例复制后本地维护，不提交）
 ```
 
 ## 安装
@@ -55,7 +55,7 @@
 2. 下载并安装 `tdlr`
 3. 下载并安装 `aria2` 1.37.0
 4. 下载或安装 `dhtgbot`
-5. 创建应用目录、默认配置、启动入口，并把命令加入用户 `PATH`
+5. 创建应用目录、示例配置、启动入口，并把命令加入用户 `PATH`
 
 如果环境里已经存在 `amagi`、`tdlr` 或 `aria2c`，脚本会先下载，再询问是否覆盖，默认不覆盖。
 
@@ -110,13 +110,14 @@ curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/ins
 2. 下载并安装 `tdlr`
 3. 下载 `aria2` 1.37.0 源码包并安装到用户环境
 4. 把 `dhtgbot` 发布包解压到当前目录下的 `./dhtgbot`
-5. 创建 `./dhtgbot/config.yaml`
-6. 提示继续配置主程序和下属软件
+5. 保留 `./dhtgbot/config.example.yaml` 作为参考
+6. 提示复制为 `./dhtgbot/config.yaml` 并继续配置主程序和下属软件
 
 说明：
 
 - Linux/macOS 上的 `aria2` 当前走源码安装，因此需要基础编译环境
 - 已存在的 `amagi`、`tdlr`、`aria2c` 会先下载，再询问是否覆盖，默认不覆盖
+- 远程安装解压完成后会删除原始压缩包，不会把 `*.tar.gz` 留在项目目录里
 - `install.sh` 默认不会把 `dhtgbot` 自己装进 `PATH`
 - `install.sh` 成功结束后会打开一个位于项目目录中的交互 shell；退出该 shell 会回到原来的位置
 - 如果需要旧的“运行时安装”行为，可使用 `bash ./scripts/install.sh --layout runtime`
@@ -198,12 +199,12 @@ docker run --rm ghcr.io/haiyewei/dhtgbot:latest --help
 
 ## 配置
 
-安装后会生成：
+安装后会准备以下运行目录：
 
-- Windows: `%LOCALAPPDATA%\Programs\dhtgbot\app\config.yaml`
-- Linux/macOS: `~/.local/share/dhtgbot/config.yaml`
+- Windows: `%LOCALAPPDATA%\Programs\dhtgbot\app\config.example.yaml`
+- Linux/macOS: `~/.local/share/dhtgbot/config.example.yaml`
 
-可以从 [config.example.yaml](https://github.com/haiyewei/dhtgbot/blob/master/config.example.yaml) 开始修改。
+复制 [config.example.yaml](https://github.com/haiyewei/dhtgbot/blob/master/config.example.yaml) 为 `config.yaml` 后再开始修改。
 
 最重要的字段有：
 

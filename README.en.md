@@ -38,7 +38,7 @@ The project itself is a single binary called `dhtgbot`, but it depends on three 
 ├── config.example.docker.yaml Docker example config
 ├── Dockerfile             container build file
 ├── compose.yaml           local / published image runtime example
-└── config.yaml            real runtime config (generated locally, not committed)
+└── config.yaml            real runtime config (copied locally from the example, not committed)
 ```
 
 ## Installation
@@ -55,7 +55,7 @@ It will:
 2. Download and install `tdlr`
 3. Download and install `aria2` 1.37.0
 4. Download or install `dhtgbot`
-5. Create the app home, default config, launcher entry, and add commands to the user `PATH`
+5. Create the app home, example config, launcher entry, and add commands to the user `PATH`
 
 If `amagi`, `tdlr`, or `aria2c` already exists in the environment, the script downloads the package first and then asks whether it should overwrite the existing installation. The default answer is no.
 
@@ -110,13 +110,14 @@ curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/ins
 2. Download and install `tdlr`
 3. Download the `aria2` 1.37.0 source archive and install it into the user environment
 4. Extract the `dhtgbot` release package into `./dhtgbot` under the current directory
-5. Create `./dhtgbot/config.yaml`
-6. Prompt for the remaining configuration work for the main program and dependencies
+5. Keep `./dhtgbot/config.example.yaml` as the reference file
+6. Prompt you to copy it to `./dhtgbot/config.yaml` and continue the remaining configuration work
 
 Notes:
 
 - On Linux and macOS, `aria2` currently uses source installation, so a basic build toolchain is required
 - Existing `amagi`, `tdlr`, or `aria2c` installations are not overwritten automatically
+- After remote extraction, the original archive is deleted, so the project directory is not left with `*.tar.gz`
 - `install.sh` does not install `dhtgbot` itself into `PATH` by default
 - after `install.sh` finishes successfully, it opens an interactive shell inside the project directory; exiting that shell returns to the previous location
 - if you need the old runtime-style behavior, use `bash ./scripts/install.sh --layout runtime`
@@ -198,12 +199,12 @@ Notes:
 
 ## Configuration
 
-After installation, `config.yaml` is created in:
+After installation, the runtime directory includes:
 
-- Windows: `%LOCALAPPDATA%\Programs\dhtgbot\app\config.yaml`
-- Linux/macOS: `~/.local/share/dhtgbot/config.yaml`
+- Windows: `%LOCALAPPDATA%\Programs\dhtgbot\app\config.example.yaml`
+- Linux/macOS: `~/.local/share/dhtgbot/config.example.yaml`
 
-Start from [config.example.yaml](https://github.com/haiyewei/dhtgbot/blob/master/config.example.yaml).
+Copy [config.example.yaml](https://github.com/haiyewei/dhtgbot/blob/master/config.example.yaml) to `config.yaml` before editing it.
 
 Important fields:
 

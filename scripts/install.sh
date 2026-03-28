@@ -434,6 +434,8 @@ download_and_extract_archive() {
       ;;
   esac
 
+  rm -f "${archive_path}"
+
   printf '%s\n' "${tmp_dir}"
 }
 
@@ -772,11 +774,10 @@ install_runtime_layout() {
 
   if [[ -n "${source_template}" && -f "${source_template}" ]]; then
     cp "${source_template}" "${template_path}"
-    if [[ ! -f "${config_path}" ]]; then
-      cp "${source_template}" "${config_path}"
-      printf '[dhtgbot] created %s from the example template\n' "${config_path}"
-    else
+    if [[ -f "${config_path}" ]]; then
       printf '[dhtgbot] kept existing config at %s\n' "${config_path}"
+    else
+      printf '[dhtgbot] config file not created automatically; copy %s to %s\n' "${template_path}" "${config_path}"
     fi
   fi
 
@@ -826,20 +827,23 @@ install_workspace_layout() {
   chmod +x "${workspace_dir}/scripts/"*.sh 2>/dev/null || true
 
   if [[ -f "${template_path}" ]]; then
-    if [[ ! -f "${config_path}" ]]; then
-      cp "${template_path}" "${config_path}"
-      printf '[dhtgbot] created %s from the example template\n' "${config_path}"
-    else
+    if [[ -f "${config_path}" ]]; then
       printf '[dhtgbot] kept existing config at %s\n' "${config_path}"
+    else
+      printf '[dhtgbot] config file not created automatically; copy %s to %s\n' "${template_path}" "${config_path}"
     fi
   fi
 }
 
 print_workspace_summary() {
   local workspace_dir="$1"
+  local template_path="${workspace_dir}/config.example.yaml"
+  local config_path="${workspace_dir}/config.yaml"
 
   printf '[dhtgbot] extracted project to %s\n' "${workspace_dir}"
-  printf '[dhtgbot] edit %s/config.yaml before the first real run\n' "${workspace_dir}"
+  printf '[dhtgbot] copy the example config before the first real run:\n'
+  printf '  cp "%s" "%s"\n' "${template_path}" "${config_path}"
+  printf '[dhtgbot] then edit %s\n' "${config_path}"
   printf '[dhtgbot] confirm services.amagi.start_command, services.tdlr.start_command, and services.aria2.start_command in config.yaml\n'
   printf '[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml\n'
   printf '[dhtgbot] the dependency commands are expected in PATH: amagi, tdlr, aria2c\n'
@@ -870,7 +874,7 @@ maybe_enter_workspace_shell() {
   esac
 
   printf '[dhtgbot] opening an interactive shell in %s\n' "${workspace_dir}"
-  printf '[dhtgbot] exit this shell when you finish editing config.yaml\n'
+  printf '[dhtgbot] exit this shell when you finish copying and editing config.yaml\n'
   cd "${workspace_dir}"
   exec "${SHELL:-/bin/sh}" -i
 }
@@ -934,7 +938,9 @@ if [[ "${INSTALL_LAYOUT}" == "runtime" ]]; then
 
   printf '[dhtgbot] installed launcher to %s/%s\n' "${INSTALL_DIR}" "${BIN_NAME}"
   printf '[dhtgbot] application home: %s\n' "${APP_HOME}"
-  printf '[dhtgbot] edit %s/config.yaml before the first real run\n' "${APP_HOME}"
+  printf '[dhtgbot] copy the example config before the first real run:\n'
+  printf '  cp "%s/config.example.yaml" "%s/config.yaml"\n' "${APP_HOME}" "${APP_HOME}"
+  printf '[dhtgbot] then edit %s/config.yaml\n' "${APP_HOME}"
   printf '[dhtgbot] confirm services.amagi.start_command, services.tdlr.start_command, and services.aria2.start_command in config.yaml\n'
   printf '[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml\n'
   printf '[dhtgbot] the installed commands are now available in PATH: dhtgbot, amagi, tdlr, aria2c\n'

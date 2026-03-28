@@ -579,12 +579,11 @@ function Install-DhtgbotRuntime {
 
     if ($SourceTemplate -and (Test-Path $SourceTemplate -PathType Leaf)) {
         Copy-Item -LiteralPath $SourceTemplate -Destination $templatePath -Force
-        if (-not (Test-Path $configPath -PathType Leaf)) {
-            Copy-Item -LiteralPath $SourceTemplate -Destination $configPath -Force
-            Write-Host "[dhtgbot] created $configPath from the example template"
+        if (Test-Path $configPath -PathType Leaf) {
+            Write-Host "[dhtgbot] kept existing config at $configPath"
         }
         else {
-            Write-Host "[dhtgbot] kept existing config at $configPath"
+            Write-Host "[dhtgbot] config file is not created automatically; copy $templatePath to $configPath"
         }
     }
 
@@ -651,7 +650,9 @@ try {
     Install-DhtgbotRuntime -SourceBinary $SourceBinary -SourceTemplate $SourceTemplate -SourceScriptsDir $SourceScriptsDir
     Write-Host "[dhtgbot] installed launcher to $(Join-Path $InstallDir $LauncherName)"
     Write-Host "[dhtgbot] application home: $HomeDir"
-    Write-Host "[dhtgbot] edit $(Join-Path $HomeDir 'config.yaml') before the first real run"
+    Write-Host "[dhtgbot] copy the example config before the first real run:"
+    Write-Host "  Copy-Item $(Join-Path $HomeDir 'config.example.yaml') $(Join-Path $HomeDir 'config.yaml')"
+    Write-Host "[dhtgbot] then edit $(Join-Path $HomeDir 'config.yaml')"
     Write-Host "[dhtgbot] confirm services.amagi.start_command and services.tdlr.start_command in config.yaml"
     Write-Host "[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml"
     Write-Host "[dhtgbot] the installed commands are now available in PATH: dhtgbot, amagi, tdlr, aria2c"
