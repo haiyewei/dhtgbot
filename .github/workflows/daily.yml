@@ -58,7 +58,7 @@ jobs:
             artifact: dhtgbot-x86_64-pc-windows-msvc.zip
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -107,7 +107,7 @@ jobs:
           Compress-Archive -Path package\* -DestinationPath ${{ matrix.artifact }}
 
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
@@ -118,11 +118,11 @@ jobs:
       contents: write
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -140,10 +140,12 @@ jobs:
           git push -f origin daily
 
       - name: Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: daily
-          name: Daily Build
-          body: "Automated daily build from latest code. Updated daily at UTC 00:00."
-          prerelease: true
-          files: dist/*
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create daily dist/* \
+            --title "Daily Build" \
+            --notes "Automated daily build from latest code. Updated daily at UTC 00:00." \
+            --prerelease
