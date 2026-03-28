@@ -3,6 +3,9 @@
 FROM alpine:3.21 AS deps
 
 ARG TARGETARCH=amd64
+ARG DHTGBOT_REPO_OWNER=haiyewei
+ARG DHTGBOT_REPO_NAME=dhtgbot
+ARG DHTGBOT_VERSION=v0.1.1
 ARG AMAGI_REPO_OWNER=bandange
 ARG AMAGI_REPO_NAME=amagi-rs
 ARG AMAGI_VERSION=v0.1.0
@@ -18,27 +21,21 @@ RUN set -eux; \
       arm64) arch="aarch64" ;; \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
+    fetch_release_asset() { \
+      url="$1"; \
+      output="$2"; \
+      curl -fsSL --retry 10 --retry-delay 3 --retry-all-errors "$url" -o "$output"; \
+    }; \
     mkdir -p /out; \
-    curl -fsSL "https://github.com/${AMAGI_REPO_OWNER}/${AMAGI_REPO_NAME}/releases/download/${AMAGI_VERSION}/amagi-${arch}-unknown-linux-musl.tar.gz" -o /tmp/amagi.tar.gz; \
+    fetch_release_asset "https://github.com/${DHTGBOT_REPO_OWNER}/${DHTGBOT_REPO_NAME}/releases/download/${DHTGBOT_VERSION}/dhtgbot-${arch}-unknown-linux-musl.tar.gz" /tmp/dhtgbot.tar.gz; \
+    tar -xzf /tmp/dhtgbot.tar.gz -C /tmp; \
+    install -Dm755 /tmp/dhtgbot /out/dhtgbot; \
+    fetch_release_asset "https://github.com/${AMAGI_REPO_OWNER}/${AMAGI_REPO_NAME}/releases/download/${AMAGI_VERSION}/amagi-${arch}-unknown-linux-musl.tar.gz" /tmp/amagi.tar.gz; \
     tar -xzf /tmp/amagi.tar.gz -C /tmp; \
     install -Dm755 /tmp/amagi /out/amagi; \
-    curl -fsSL "https://github.com/${TDLR_REPO_OWNER}/${TDLR_REPO_NAME}/releases/download/${TDLR_VERSION}/tdlr-${arch}-unknown-linux-musl.tar.gz" -o /tmp/tdlr.tar.gz; \
+    fetch_release_asset "https://github.com/${TDLR_REPO_OWNER}/${TDLR_REPO_NAME}/releases/download/${TDLR_VERSION}/tdlr-${arch}-unknown-linux-musl.tar.gz" /tmp/tdlr.tar.gz; \
     tar -xzf /tmp/tdlr.tar.gz -C /tmp; \
     install -Dm755 /tmp/tdlr /out/tdlr
-
-FROM rust:1.94-alpine3.21 AS builder
-
-WORKDIR /build
-
-RUN apk add --no-cache build-base clang lld musl-dev perl pkgconfig
-
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/build/target \
-    cargo build --locked --release --bin dhtgbot \
-    && install -Dm755 target/release/dhtgbot /out/dhtgbot
 
 FROM alpine:3.21 AS runtime
 
@@ -51,7 +48,7 @@ RUN apk add --no-cache aria2 ca-certificates tini \
     && adduser -S -G dhtgbot -h /var/lib/dhtgbot dhtgbot \
     && install -d -o dhtgbot -g dhtgbot /opt/dhtgbot/bin /opt/dhtgbot/docker /var/lib/dhtgbot
 
-COPY --from=builder /out/dhtgbot /opt/dhtgbot/bin/dhtgbot
+COPY --from=deps /out/dhtgbot /opt/dhtgbot/bin/dhtgbot
 COPY --from=deps /out/amagi /usr/local/bin/amagi
 COPY --from=deps /out/tdlr /usr/local/bin/tdlr
 COPY config.example.yaml /opt/dhtgbot/config.example.yaml

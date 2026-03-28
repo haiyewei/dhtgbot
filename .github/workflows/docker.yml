@@ -4,15 +4,20 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 on:
-  push:
-    branches:
-      - master
-    tags:
-      - 'v*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to package into the Docker image
+        required: true
+        type: string
+      publish_latest:
+        description: Also publish the latest tag
+        required: true
+        default: true
+        type: boolean
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ inputs.release_tag || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -25,14 +30,21 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.release_tag }}
 
       - name: Prepare image name
         id: prep
         shell: bash
         run: |
           repo_name="${GITHUB_REPOSITORY##*/}"
+          version="${{ inputs.release_tag }}"
+          version="${version#v}"
+          minor="$(printf '%s\n' "${version}" | awk -F. '{print $1 "." $2}')"
           echo "dockerhub_image=docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${repo_name,,}" >> "$GITHUB_OUTPUT"
           echo "ghcr_image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "release_version=${version}" >> "$GITHUB_OUTPUT"
+          echo "release_minor=${minor}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -61,10 +73,10 @@ jobs:
             ${{ steps.prep.outputs.dockerhub_image }}
             ${{ steps.prep.outputs.ghcr_image }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ inputs.publish_latest }}
+            type=raw,value=${{ inputs.release_tag }}
+            type=raw,value=${{ steps.prep.outputs.release_version }}
+            type=raw,value=${{ steps.prep.outputs.release_minor }}
             type=sha,prefix=sha-
 
       - name: Build and push
@@ -76,5 +88,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            DHTGBOT_REPO_OWNER=${{ github.repository_owner }}
+            DHTGBOT_REPO_NAME=${{ github.event.repository.name }}
+            DHTGBOT_VERSION=${{ inputs.release_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
