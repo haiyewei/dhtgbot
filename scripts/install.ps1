@@ -10,13 +10,22 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$SkipDependenciesRequested = $SkipDependencies.IsPresent
+if (-not $SkipDependenciesRequested -and $env:DHTGBOT_INSTALL_SKIP_DEPENDENCIES) {
+    $SkipDependenciesRequested = $env:DHTGBOT_INSTALL_SKIP_DEPENDENCIES.Trim().ToLowerInvariant() -in @("1", "true", "yes", "on")
+}
+
+$ProxyRequested = $Proxy.IsPresent
+if (-not $ProxyRequested -and $env:DHTGBOT_INSTALL_PROXY) {
+    $ProxyRequested = $env:DHTGBOT_INSTALL_PROXY.Trim().ToLowerInvariant() -in @("1", "true", "yes", "on")
+}
 
 $BinaryName = "dhtgbot.exe"
 $LauncherName = "dhtgbot.cmd"
 $RemoteRepoOwner = if ($env:DHTGBOT_REMOTE_REPO_OWNER) { $env:DHTGBOT_REMOTE_REPO_OWNER } else { "haiyewei" }
 $RemoteRepoName = if ($env:DHTGBOT_REMOTE_REPO_NAME) { $env:DHTGBOT_REMOTE_REPO_NAME } else { "dhtgbot" }
 $RemoteBaseUrl = $env:DHTGBOT_REMOTE_BASE_URL
-$ProxyPrefix = if ($Proxy) { "https://mirror.ghproxy.com/" } else { "" }
+$ProxyPrefix = if ($ProxyRequested) { "https://mirror.ghproxy.com/" } else { "" }
 
 $AmagiVersion = if ($env:AMAGI_INSTALL_VERSION) { $env:AMAGI_INSTALL_VERSION } else { "latest" }
 $AmagiRepoOwner = if ($env:AMAGI_REMOTE_REPO_OWNER) { $env:AMAGI_REMOTE_REPO_OWNER } else { "bandange" }
@@ -600,7 +609,7 @@ if ([string]::IsNullOrWhiteSpace($HomeDir)) {
     $HomeDir = Get-DefaultHomeDir
 }
 
-if (-not $SkipDependencies) {
+if (-not $SkipDependenciesRequested) {
     Install-Amagi
     Install-Tdlr
     Install-Aria2

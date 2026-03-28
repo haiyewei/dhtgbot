@@ -68,9 +68,16 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 Remote execution:
 
 ```powershell
-$tmp = Join-Path $env:TEMP "dhtgbot-install.ps1"
-Invoke-WebRequest "https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1" -OutFile $tmp
-powershell -ExecutionPolicy Bypass -File $tmp
+irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
+```
+
+If you need options for remote execution, use environment variables:
+
+```powershell
+$env:DHTGBOT_INSTALL_VERSION = "v0.1.1"
+$env:DHTGBOT_INSTALL_SKIP_DEPENDENCIES = "1"
+$env:DHTGBOT_INSTALL_PROXY = "1"
+irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
 ```
 
 ### Linux / macOS
