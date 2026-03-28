@@ -1,0 +1,71 @@
+bots:
+  master:
+    name: "master"
+    token: "REPLACE_WITH_MASTER_BOT_TOKEN"
+    enabled: true
+    admins:
+      - 123456789
+    backup:
+      target_group: "-1001234567890"
+      target_topic: 0
+      password: "CHANGE_BACKUP_PASSWORD"
+      import_password: "CHANGE_IMPORT_PASSWORD"
+
+  tdl:
+    name: "tdl"
+    token: "REPLACE_WITH_TDL_BOT_TOKEN"
+    enabled: false
+    forward:
+      peer: "-1001234567890"
+      thread: 0
+      listen_chat: "-1001234567890"
+      listen_thread: 0
+      account: "YOUR_TDLR_ACCOUNT_ID"
+
+  xdl:
+    name: "xdl"
+    token: "REPLACE_WITH_XDL_BOT_TOKEN"
+    enabled: false
+    account: "YOUR_TDLR_ACCOUNT_ID"
+    twitter:
+      # Use single quotes for cookie strings to avoid YAML parsing issues.
+      cookies: 'auth_token=...; ct0=...; twid=u%3D...'
+      timeout: 15000
+    tweetdl:
+      listen_group: "-1001234567890"
+      listen_topic: 0
+      target_group: "-1001234567890"
+      target_topic: 0
+      download_dir: "./data/downloads"
+    like_dl:
+      poll_interval: 30
+      username: "your_x_username"
+      target_group: "-1001234567890"
+      target_topic: 0
+      download_dir: "./data/downloads"
+    author_track:
+      poll_interval: 60
+      target_group: "-1001234567890"
+      target_topic: 0
+      download_dir: "./data/downloads"
+
+services:
+  amagi:
+    base_url: "http://127.0.0.1:4567"
+    start_command: "amagi serve --host 127.0.0.1 --port 4567"
+    startup_timeout_ms: 15000
+
+  tdlr:
+    base_url: "http://127.0.0.1:8787"
+    start_command: "tdlr service --http-bind 127.0.0.1:8787"
+    startup_timeout_ms: 15000
+
+  aria2:
+    rpc_url: "http://127.0.0.1:6800/jsonrpc"
+    secret:
+    start_command: "aria2c --enable-rpc=true --rpc-listen-all=false --rpc-listen-port=6800"
+    startup_timeout_ms: 15000
+
+database:
+  type: "sqlite"
+  path: "./data/bot.sqlite"

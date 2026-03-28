@@ -1,0 +1,279 @@
+# dhtgbot-rs
+
+[English](./README.en.md)
+
+`dhtgbot-rs` 是一个纯 Rust 的 Telegram Bot 项目，用来协调多个机器人和外部服务，处理以下几类工作：
+
+- `master`：管理、备份、恢复、调试
+- `tdl`：监听消息并把符合规则的链接转发给 `tdlr`
+- `xdl`：查询 X/Twitter 内容、监听点赞、跟踪作者、下载媒体并通过 `tdlr` 上传
+
+项目本身是一个单二进制程序 `dhtgbot`，但运行时依赖三个外部组件：
+
+- `amagi`：提供 Twitter/X 抓取桥接服务
+- `tdlr`：负责 Telegram 侧上传和转发
+- `aria2`：负责媒体下载
+
+## 特性
+
+- 纯 Rust 重写，根目录即 Rust 项目
+- 配置驱动，不硬编码本机绝对路径
+- 统一的串行全局任务队列
+- SQLite 存储，数据模型已恢复为旧版 `key/value + {"value": ...}` 形式
+- `master` 支持数据库备份与恢复
+- 支持将 `amagi`、`tdlr`、`aria2` 作为外部命令启动
+- 发布包自带安装脚本
+
+## 目录
+
+```text
+.
+├── src/                   Rust 源码
+├── scripts/               安装脚本
+├── .github/workflows/     CI / daily / release
+├── config.example.yaml    示例配置
+└── config.yaml            实际运行配置（本地生成，不提交）
+```
+
+## 安装
+
+### Windows
+
+发布包内置：
+
+- `scripts/install.ps1`
+
+它会执行以下操作：
+
+1. 下载并安装 `amagi`
+2. 下载并安装 `tdlr`
+3. 下载并安装 `aria2` 1.37.0
+4. 下载或安装 `dhtgbot`
+5. 创建应用目录、默认配置、启动入口，并把命令加入用户 `PATH`
+
+如果环境里已经存在 `amagi`、`tdlr` 或 `aria2c`，脚本会先下载，再询问是否覆盖，默认不覆盖。
+
+示例：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
+```
+
+远程执行：
+
+```powershell
+$tmp = Join-Path $env:TEMP "dhtgbot-install.ps1"
+Invoke-WebRequest "https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1" -OutFile $tmp
+powershell -ExecutionPolicy Bypass -File $tmp
+```
+
+### Linux / macOS
+
+发布包内置：
+
+- `scripts/install.sh`
+- `scripts/install-systemd.sh`（仅 Linux）
+
+普通安装：
+
+```bash
+bash ./scripts/install.sh
+```
+
+远程执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.sh | bash
+```
+
+Linux 安装为 `systemd` 服务：
+
+```bash
+bash ./scripts/install-systemd.sh
+```
+
+远程执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install-systemd.sh | bash
+```
+
+`install.sh` 会：
+
+1. 下载并安装 `amagi`
+2. 下载并安装 `tdlr`
+3. 下载 `aria2` 1.37.0 源码包并安装到用户环境
+4. 下载或安装 `dhtgbot`
+5. 创建应用目录、默认配置、启动入口，并把命令加入用户 `PATH`
+
+说明：
+
+- Linux/macOS 上的 `aria2` 当前走源码安装，因此需要基础编译环境
+- 已存在的 `amagi`、`tdlr`、`aria2c` 会先下载，再询问是否覆盖，默认不覆盖
+
+### 覆盖策略
+
+安装脚本支持环境变量：
+
+```text
+DHTGBOT_INSTALL_OVERWRITE=prompt   # 默认，交互提问
+DHTGBOT_INSTALL_OVERWRITE=always   # 总是覆盖
+DHTGBOT_INSTALL_OVERWRITE=never    # 永不覆盖
+```
+
+### 远程二进制来源
+
+安装脚本会根据版本参数下载对应 workflow 发布的二进制：
+
+- 默认：`latest`
+  读取最新正式 Release
+- `DHTGBOT_INSTALL_VERSION=daily`
+  读取 `Daily Build` 工作流发布的 `daily` tag 产物
+- `DHTGBOT_INSTALL_VERSION=v0.1.0`
+  读取指定 tag 的 Release 产物
+
+依赖程序也采用同样思路：
+
+- `amagi` 从 `amagi-rs` 的 GitHub Release 下载
+- `tdlr` 从 `tdlr` 的 GitHub Release 下载
+- `aria2` 使用官方 GitHub Release `release-1.37.0`
+
+## 配置
+
+安装后会生成：
+
+- Windows: `%LOCALAPPDATA%\Programs\dhtgbot\app\config.yaml`
+- Linux/macOS: `~/.local/share/dhtgbot/config.yaml`
+
+可以从 [config.example.yaml](./config.example.yaml) 开始修改。
+
+最重要的字段有：
+
+- `bots.master.base.token`
+- `bots.master.admins`
+- `bots.tdl.base.token`
+- `bots.xdl.base.token`
+- `bots.xdl.twitter.cookies`
+- `services.amagi.base_url`
+- `services.amagi.start_command`
+- `services.tdlr.base_url`
+- `services.tdlr.start_command`
+- `services.aria2.rpc_url`
+- `services.aria2.start_command`
+
+注意：
+
+- `bots.xdl.twitter.cookies` 建议用单引号包裹整段 Cookie
+- `start_command` 应填写环境中的命令，而不是绝对路径
+- 程序启动时固定从当前工作目录读取 `config.yaml`
+- 安装脚本生成的启动入口会自动切换到应用目录运行
+
+## Bot 说明
+
+### master
+
+主要命令：
+
+- `/help`
+- `/backup`
+- `/backup_status`
+- `/restore`
+- `/restore_cancel`
+- `/restore_nozip`
+- `/echo`
+- `/mdata`
+
+恢复链路目前是：
+
+- 上传 ZIP
+- 输入 ZIP 密码，或使用 `/restore_nozip`
+- 输入导入密码
+- 从 ZIP 内读取 `.sql`
+- 覆盖导入 SQLite
+
+### tdl
+
+用于监听指定群组/话题中的消息，并把符合规则的链接交给 `tdlr` 处理。
+
+主要命令：
+
+- `/help`
+- `/version`
+- `/forward`
+
+### xdl
+
+用于 X/Twitter 相关能力。
+
+主要命令：
+
+- `/profile`
+- `/tweet`
+- `/tweets`
+- `/search`
+- `/tweetdl`
+- `/tweet_like_dl`
+- `/author_track`
+
+支持：
+
+- 单条 tweet 查询
+- 媒体下载
+- 点赞轮询
+- 作者追踪
+- 通过 `tdlr` 上传媒体
+
+## 数据与兼容
+
+当前存储层已经回到旧版数据库模型：
+
+- 表结构：`bot_xxx(key, value)`
+- 值结构：`{"value": ...}`
+
+启动时会自动创建缺失表，并对已知的旧/中间格式数据做规范化处理。
+
+## 开发
+
+```bash
+cargo fmt
+cargo test --locked --workspace
+cargo run
+```
+
+程序启动时会：
+
+1. 读取 `config.yaml`
+2. 初始化 SQLite
+3. 启动或连接 `amagi`、`tdlr`、`aria2`
+4. 启动已启用的 bots
+
+## 发布
+
+仓库包含三套工作流：
+
+- `Cargo CI`
+- `Daily Build`
+- `Release`
+
+发布包中会包含：
+
+- `dhtgbot`
+- `config.example.yaml`
+- 安装脚本
+- Linux `systemd` 安装脚本
+
+安装脚本本身既支持：
+
+- 从 release 包中本地执行
+- 从 GitHub Raw 远程执行
+- 再按 workflow 发布结果去下载远程二进制
+
+## 当前状态
+
+这是一个面向实际运行的工程仓库，而不是通用 SDK。当前更关注：
+
+- 行为迁移正确
+- 配置明确
+- 运行目录固定
+- 安装链路完整
+- 后续便于继续扩展新的 bot 能力

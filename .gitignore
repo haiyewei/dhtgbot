@@ -1,0 +1,47 @@
+# Rust build output
+/target/
+
+# Archived legacy implementation
+/.cache/
+
+# Runtime data
+logs/
+data/downloads/
+data/
+
+# Local configuration / secrets
+config.yaml
+.env
+.env.*
+
+# Database and local state
+data/*.sqlite
+data/*.sqlite-*
+
+# Logs
+*.log
+
+# Local packaging / install artifacts
+package/
+dist/
+*.zip
+*.tar.gz
+*.tar.xz
+*.tar.bz2
+
+# Local runtime / service state
+tmp/
+temp/
+run/
+*.service
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+

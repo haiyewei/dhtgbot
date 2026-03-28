@@ -1,0 +1,131 @@
+# Build and release binaries for multiple platforms
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  BUILD_TYPE: release
+  BIN_NAME: dhtgbot
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    permissions:
+      contents: read
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64-gnu
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            artifact: dhtgbot-x86_64-unknown-linux-gnu.tar.gz
+          - name: linux-aarch64-gnu
+            os: ubuntu-22.04
+            target: aarch64-unknown-linux-gnu
+            artifact: dhtgbot-aarch64-unknown-linux-gnu.tar.gz
+            cross: true
+          - name: linux-x86_64-musl
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-musl
+            artifact: dhtgbot-x86_64-unknown-linux-musl.tar.gz
+            cross: true
+          - name: linux-aarch64-musl
+            os: ubuntu-22.04
+            target: aarch64-unknown-linux-musl
+            artifact: dhtgbot-aarch64-unknown-linux-musl.tar.gz
+            cross: true
+          - name: macos-x86_64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            artifact: dhtgbot-x86_64-apple-darwin.tar.gz
+          - name: macos-aarch64
+            os: macos-14
+            target: aarch64-apple-darwin
+            artifact: dhtgbot-aarch64-apple-darwin.tar.gz
+          - name: windows-x86_64-msvc
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+            artifact: dhtgbot-x86_64-pc-windows-msvc.zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.cross
+        uses: taiki-e/install-action@cross
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.cross }}" = "true" ]; then
+            cross build --release --locked --bin "$BIN_NAME" --target ${{ matrix.target }}
+          else
+            cargo build --release --locked --bin "$BIN_NAME" --target ${{ matrix.target }}
+          fi
+
+      - name: Package (tar.gz)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          rm -rf package
+          mkdir -p package/scripts
+          cp target/${{ matrix.target }}/release/${BIN_NAME} package/${BIN_NAME}
+          cp config.example.yaml package/config.example.yaml
+          cp scripts/install.sh package/scripts/install.sh
+          cp scripts/install-systemd.sh package/scripts/install-systemd.sh
+          chmod +x package/scripts/install.sh package/scripts/install-systemd.sh
+          tar -czvf ${{ matrix.artifact }} -C package .
+
+      - name: Package (zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Remove-Item package -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          New-Item -ItemType Directory -Force -Path package/scripts | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe" "package/${{ env.BIN_NAME }}.exe"
+          Copy-Item "config.example.yaml" "package/config.example.yaml"
+          Copy-Item "scripts/install.ps1" "package/scripts/install.ps1"
+          Compress-Archive -Path package\* -DestinationPath ${{ matrix.artifact }}
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    needs: build
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
