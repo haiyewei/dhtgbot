@@ -28,6 +28,8 @@ RUN set -eux; \
 
 FROM rust:1.94-alpine3.21 AS builder
 
+ARG TARGETARCH=amd64
+
 WORKDIR /build
 
 RUN apk add --no-cache build-base musl-dev perl pkgconfig
