@@ -128,7 +128,9 @@ Notes:
 - `install.sh` does not install `dhtgbot` itself into `PATH` by default
 - after `install.sh` finishes successfully, it opens an interactive shell inside the project directory; exiting that shell returns to the previous location
 - if you need the old runtime-style behavior, use `bash ./scripts/install.sh --layout runtime`
-- `install-systemd.sh` is not affected by this default behavior; it explicitly uses the runtime layout and installs the main program into the service user's app directory
+- `install-systemd.sh` first checks whether it is running from a `scripts/` directory inside an existing project/workspace
+- when it is executed locally from an existing workspace, it reuses `../` as the `systemd` working directory and creates the background service from that local `dhtgbot` binary
+- when it is executed remotely, or when no existing workspace is detected, it falls back to the runtime-layout install and places the main program in the service user's app directory
 
 ### Overwrite policy
 

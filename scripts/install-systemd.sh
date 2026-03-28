@@ -8,6 +8,10 @@ fi
 
 SCRIPT_PATH="${BASH_SOURCE[0]:-}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${SCRIPT_PATH}")" && pwd)"
+BIN_NAME="dhtgbot"
+LOCAL_WORKSPACE_ROOT=""
+SERVICE_WORKING_DIR=""
+SERVICE_EXEC_START=""
 REPO_OWNER="${DHTGBOT_REMOTE_REPO_OWNER:-haiyewei}"
 REPO_NAME="${DHTGBOT_REMOTE_REPO_NAME:-dhtgbot}"
 RAW_BRANCH="${DHTGBOT_INSTALL_SCRIPT_BRANCH:-master}"
@@ -73,6 +77,84 @@ done
 home_for_user() {
   local user_name="$1"
   getent passwd "${user_name}" | cut -d: -f6
+}
+
+normalize_install_source() {
+  case "${INSTALL_SOURCE}" in
+    auto|local|remote)
+      printf '%s\n' "${INSTALL_SOURCE}"
+      ;;
+    *)
+      printf '[dhtgbot] unsupported install source mode: %s\n' "${INSTALL_SOURCE}" >&2
+      exit 1
+      ;;
+  esac
+}
+
+resolve_local_workspace_root() {
+  local candidate_root
+
+  candidate_root="$(cd -- "${SCRIPT_DIR}/.." 2>/dev/null && pwd || true)"
+  if [[ -z "${candidate_root}" || ! -d "${candidate_root}" ]]; then
+    return 1
+  fi
+
+  if [[ ! -f "${candidate_root}/config.example.yaml" ]]; then
+    return 1
+  fi
+
+  if [[ -f "${candidate_root}/${BIN_NAME}" || -f "${candidate_root}/target/release/${BIN_NAME}" || -f "${candidate_root}/target/debug/${BIN_NAME}" ]]; then
+    printf '%s\n' "${candidate_root}"
+    return 0
+  fi
+
+  return 1
+}
+
+resolve_local_workspace_binary() {
+  local workspace_root="$1"
+  local candidate
+  local -a candidates=(
+    "${workspace_root}/${BIN_NAME}"
+    "${workspace_root}/target/release/${BIN_NAME}"
+    "${workspace_root}/target/debug/${BIN_NAME}"
+  )
+
+  for candidate in "${candidates[@]}"; do
+    if [[ -f "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+resolve_systemd_install_mode() {
+  local normalized_source
+
+  normalized_source="$(normalize_install_source)"
+  case "${normalized_source}" in
+    local)
+      if [[ -n "${LOCAL_WORKSPACE_ROOT}" ]]; then
+        printf 'local\n'
+        return 0
+      fi
+
+      printf '[dhtgbot] local systemd mode requested but no existing workspace was detected next to %s.\n' "${SCRIPT_DIR}" >&2
+      exit 1
+      ;;
+    remote)
+      printf 'remote\n'
+      ;;
+    auto)
+      if [[ -n "${LOCAL_WORKSPACE_ROOT}" ]]; then
+        printf 'local\n'
+      else
+        printf 'remote\n'
+      fi
+      ;;
+  esac
 }
 
 run_with_sudo() {
@@ -148,9 +230,8 @@ if [[ -z "${SERVICE_USER}" ]]; then
   exit 1
 fi
 
-if [[ ! -f "${INSTALL_SCRIPT}" ]]; then
-  download_install_script
-fi
+LOCAL_WORKSPACE_ROOT="$(resolve_local_workspace_root || true)"
+INSTALL_MODE="$(resolve_systemd_install_mode)"
 
 SERVICE_HOME="$(home_for_user "${SERVICE_USER}")"
 if [[ -z "${SERVICE_HOME}" ]]; then
@@ -158,15 +239,37 @@ if [[ -z "${SERVICE_HOME}" ]]; then
   exit 1
 fi
 
-if [[ -z "${INSTALL_DIR}" ]]; then
-  INSTALL_DIR="${SERVICE_HOME}/.local/bin"
-fi
+if [[ "${INSTALL_MODE}" == "local" ]]; then
+  if [[ -z "${APP_HOME}" ]]; then
+    APP_HOME="${LOCAL_WORKSPACE_ROOT}"
+  fi
 
-if [[ -z "${APP_HOME}" ]]; then
-  APP_HOME="${SERVICE_HOME}/.local/share/dhtgbot"
-fi
+  SERVICE_WORKING_DIR="${APP_HOME}"
+  SERVICE_EXEC_START="$(resolve_local_workspace_binary "${LOCAL_WORKSPACE_ROOT}" || true)"
+  if [[ -z "${SERVICE_EXEC_START}" ]]; then
+    printf '[dhtgbot] no local %s binary was found in %s.\n' "${BIN_NAME}" "${LOCAL_WORKSPACE_ROOT}" >&2
+    exit 1
+  fi
 
-run_install_as_service_user
+  printf '[dhtgbot] detected local workspace at %s\n' "${LOCAL_WORKSPACE_ROOT}"
+  printf '[dhtgbot] systemd will reuse the existing workspace and binary\n'
+else
+  if [[ ! -f "${INSTALL_SCRIPT}" ]]; then
+    download_install_script
+  fi
+
+  if [[ -z "${INSTALL_DIR}" ]]; then
+    INSTALL_DIR="${SERVICE_HOME}/.local/bin"
+  fi
+
+  if [[ -z "${APP_HOME}" ]]; then
+    APP_HOME="${SERVICE_HOME}/.local/share/dhtgbot"
+  fi
+
+  run_install_as_service_user
+  SERVICE_WORKING_DIR="${APP_HOME}"
+  SERVICE_EXEC_START="${APP_HOME}/bin/dhtgbot-real"
+fi
 
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 TMP_SERVICE_FILE="$(mktemp)"
@@ -179,9 +282,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=${SERVICE_USER}
-WorkingDirectory=${APP_HOME}
-Environment=DHTGBOT_HOME=${APP_HOME}
-ExecStart=${APP_HOME}/bin/dhtgbot-real
+WorkingDirectory=${SERVICE_WORKING_DIR}
+Environment=DHTGBOT_HOME=${SERVICE_WORKING_DIR}
+ExecStart=${SERVICE_EXEC_START}
 Restart=on-failure
 RestartSec=5
 

@@ -128,7 +128,9 @@ curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/ins
 - `install.sh` 默认不会把 `dhtgbot` 自己装进 `PATH`
 - `install.sh` 成功结束后会打开一个位于项目目录中的交互 shell；退出该 shell 会回到原来的位置
 - 如果需要旧的“运行时安装”行为，可使用 `bash ./scripts/install.sh --layout runtime`
-- `install-systemd.sh` 不受这个默认行为影响，它会显式使用运行时布局，把主程序安装到服务用户的应用目录中
+- `install-systemd.sh` 会先判断自己是否位于现有项目目录的 `scripts/` 下
+- 如果是本地现有目录执行，它会直接复用 `../` 作为 `systemd` 的工作目录，并用该目录里的 `dhtgbot` 二进制创建后台服务
+- 如果是远程执行或未检测到现有目录，它才会继续走运行时布局安装，把主程序安装到服务用户的应用目录中
 
 ### 覆盖策略
 
