@@ -74,7 +74,7 @@ irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps
 如果需要给远程执行传参，使用环境变量：
 
 ```powershell
-$env:DHTGBOT_INSTALL_VERSION = "v0.1.1"
+$env:DHTGBOT_INSTALL_VERSION = "v0.1.2"
 $env:DHTGBOT_INSTALL_SKIP_DEPENDENCIES = "1"
 $env:DHTGBOT_INSTALL_PROXY = "1"
 irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
@@ -148,8 +148,8 @@ DHTGBOT_INSTALL_OVERWRITE=never    # 永不覆盖
   读取最新正式 Release：<https://github.com/haiyewei/dhtgbot/releases/latest>
 - `DHTGBOT_INSTALL_VERSION=daily`
   读取 `Daily Build` 工作流发布的 `daily` tag 产物：<https://github.com/haiyewei/dhtgbot/releases/tag/daily>
-- `DHTGBOT_INSTALL_VERSION=v0.1.1`
-  读取指定 tag 的 Release 产物，例如：<https://github.com/haiyewei/dhtgbot/releases/tag/v0.1.1>
+- `DHTGBOT_INSTALL_VERSION=v0.1.2`
+  读取指定 tag 的 Release 产物，例如：<https://github.com/haiyewei/dhtgbot/releases/tag/v0.1.2>
 
 依赖程序也采用同样思路：
 

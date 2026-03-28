@@ -31,18 +31,18 @@ $AmagiVersion = if ($env:AMAGI_INSTALL_VERSION) { $env:AMAGI_INSTALL_VERSION } e
 $AmagiRepoOwner = if ($env:AMAGI_REMOTE_REPO_OWNER) { $env:AMAGI_REMOTE_REPO_OWNER } else { "bandange" }
 $AmagiRepoName = if ($env:AMAGI_REMOTE_REPO_NAME) { $env:AMAGI_REMOTE_REPO_NAME } else { "amagi-rs" }
 $AmagiBaseUrl = $env:AMAGI_REMOTE_BASE_URL
-$AmagiInstallDir = if ($env:AMAGI_INSTALL_DIR) { $env:AMAGI_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\amagi\bin" }
+$AmagiInstallDir = $env:AMAGI_INSTALL_DIR
 
 $TdlrVersion = if ($env:TDLR_INSTALL_VERSION) { $env:TDLR_INSTALL_VERSION } else { "latest" }
 $TdlrRepoOwner = if ($env:TDLR_REMOTE_REPO_OWNER) { $env:TDLR_REMOTE_REPO_OWNER } else { "haiyewei" }
 $TdlrRepoName = if ($env:TDLR_REMOTE_REPO_NAME) { $env:TDLR_REMOTE_REPO_NAME } else { "tdlr" }
 $TdlrBaseUrl = $env:TDLR_REMOTE_BASE_URL
-$TdlrInstallDir = if ($env:TDLR_INSTALL_DIR) { $env:TDLR_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\tdlr\bin" }
+$TdlrInstallDir = $env:TDLR_INSTALL_DIR
 
 $Aria2Version = if ($env:ARIA2_INSTALL_VERSION) { $env:ARIA2_INSTALL_VERSION } else { "1.37.0" }
 $Aria2Tag = if ($env:ARIA2_INSTALL_TAG) { $env:ARIA2_INSTALL_TAG } else { "release-$Aria2Version" }
 $Aria2BaseUrl = $env:ARIA2_REMOTE_BASE_URL
-$Aria2InstallDir = if ($env:ARIA2_INSTALL_DIR) { $env:ARIA2_INSTALL_DIR } else { Join-Path $env:LOCALAPPDATA "Programs\aria2\bin" }
+$Aria2InstallDir = $env:ARIA2_INSTALL_DIR
 $OverwritePolicy = if ($env:DHTGBOT_INSTALL_OVERWRITE) { $env:DHTGBOT_INSTALL_OVERWRITE } else { "prompt" }
 
 $ScriptPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
@@ -62,11 +62,11 @@ $script:RemoteTempPaths = [System.Collections.Generic.List[string]]::new()
 $script:LastInstallAction = $null
 
 function Get-DefaultInstallDir {
-    return (Join-Path $env:LOCALAPPDATA "Programs\dhtgbot\bin")
+    return (Get-DefaultHomeDir)
 }
 
 function Get-DefaultHomeDir {
-    return (Join-Path $env:LOCALAPPDATA "Programs\dhtgbot\app")
+    return (Join-Path (Get-Location) $RemoteRepoName)
 }
 
 function Test-RepositoryWorkspace {
@@ -365,6 +365,22 @@ function Get-ExistingCommandPath {
     return $null
 }
 
+function Use-LocalDependencyDirs {
+    $localBinDir = Join-Path $HomeDir "bin"
+
+    if ([string]::IsNullOrWhiteSpace($AmagiInstallDir)) {
+        $script:AmagiInstallDir = $localBinDir
+    }
+
+    if ([string]::IsNullOrWhiteSpace($TdlrInstallDir)) {
+        $script:TdlrInstallDir = $localBinDir
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Aria2InstallDir)) {
+        $script:Aria2InstallDir = $localBinDir
+    }
+}
+
 function Confirm-Overwrite {
     param(
         [string]$DisplayName,
@@ -444,8 +460,8 @@ function Install-RemoteBinary {
 
     New-Item -ItemType Directory -Force -Path $BinaryInstallDir | Out-Null
     $targetPath = Join-Path $BinaryInstallDir $BinaryNameToInstall
-    $existingPath = Get-ExistingCommandPath -CommandName $CommandName
-    if (-not $existingPath -and (Test-Path $targetPath -PathType Leaf)) {
+    $existingPath = $null
+    if (Test-Path $targetPath -PathType Leaf) {
         $existingPath = $targetPath
     }
 
@@ -458,7 +474,6 @@ function Install-RemoteBinary {
     }
 
     Copy-Item -LiteralPath $binaryPath.FullName -Destination (Join-Path $BinaryInstallDir $BinaryNameToInstall) -Force
-    Add-InstallDirToUserPath -Entry $BinaryInstallDir
     $script:LastInstallAction = "installed"
 }
 
@@ -510,8 +525,8 @@ function Install-Aria2 {
 
     New-Item -ItemType Directory -Force -Path $Aria2InstallDir | Out-Null
     $targetPath = Join-Path $Aria2InstallDir "aria2c.exe"
-    $existingPath = Get-ExistingCommandPath -CommandName "aria2c"
-    if (-not $existingPath -and (Test-Path $targetPath -PathType Leaf)) {
+    $existingPath = $null
+    if (Test-Path $targetPath -PathType Leaf) {
         $existingPath = $targetPath
     }
 
@@ -524,7 +539,6 @@ function Install-Aria2 {
     }
 
     Copy-Item -LiteralPath $binaryPath.FullName -Destination (Join-Path $Aria2InstallDir "aria2c.exe") -Force
-    Add-InstallDirToUserPath -Entry $Aria2InstallDir
     $script:LastInstallAction = "installed"
     Write-Host "[dhtgbot] aria2 installed to $(Join-Path $Aria2InstallDir 'aria2c.exe')"
 }
@@ -563,7 +577,7 @@ function Install-SupportScripts {
     $targetScriptsDir = Join-Path $HomeDir "scripts"
     Remove-Item -LiteralPath $targetScriptsDir -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $targetScriptsDir | Out-Null
-    Copy-Item -LiteralPath (Join-Path $SourceScriptsDir "*") -Destination $targetScriptsDir -Recurse -Force
+    Copy-Item -Path (Join-Path $SourceScriptsDir "*") -Destination $targetScriptsDir -Recurse -Force
 }
 
 function Install-DhtgbotRuntime {
@@ -598,16 +612,17 @@ function Install-DhtgbotRuntime {
 
     Install-SupportScripts -SourceScriptsDir $SourceScriptsDir
     Write-Launcher -LauncherPath $launcherPath -AppRuntimeRoot $HomeDir
-    Add-InstallDirToUserPath -Entry $InstallDir
+}
+
+if ([string]::IsNullOrWhiteSpace($HomeDir)) {
+    $HomeDir = Get-DefaultHomeDir
 }
 
 if ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = Get-DefaultInstallDir
 }
 
-if ([string]::IsNullOrWhiteSpace($HomeDir)) {
-    $HomeDir = Get-DefaultHomeDir
-}
+Use-LocalDependencyDirs
 
 if (-not $SkipDependenciesRequested) {
     Install-Amagi
@@ -662,9 +677,12 @@ try {
     Write-Host "[dhtgbot] copy the example config before the first real run:"
     Write-Host "  Copy-Item $(Join-Path $HomeDir 'config.example.yaml') $(Join-Path $HomeDir 'config.yaml')"
     Write-Host "[dhtgbot] then edit $(Join-Path $HomeDir 'config.yaml')"
-    Write-Host "[dhtgbot] confirm services.amagi.start_command and services.tdlr.start_command in config.yaml"
+    Write-Host "[dhtgbot] confirm services.amagi.start_command, services.tdlr.start_command, and services.aria2.start_command in config.yaml"
     Write-Host "[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml"
-    Write-Host "[dhtgbot] the installed commands are now available in PATH: dhtgbot, amagi, tdlr, aria2c"
+    Write-Host "[dhtgbot] local runtime binaries are installed in $(Join-Path $HomeDir 'bin')"
+    Write-Host "[dhtgbot] run the bot from the application directory:"
+    Write-Host "  Set-Location $HomeDir"
+    Write-Host "  .\dhtgbot.cmd"
 }
 finally {
     foreach ($path in $script:RemoteTempPaths) {

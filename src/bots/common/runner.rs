@@ -1,7 +1,9 @@
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
 use anyhow::Result;
+use futures::FutureExt;
 use teloxide::prelude::*;
 use tracing::error;
 
@@ -51,8 +53,21 @@ where
                 let _ = save_message(&context, storage_key, &msg).await;
             }
 
-            if let Err(error) = handle(bot, context, msg).await {
-                error!(?error, bot = storage_key, "bot handler failed");
+            match AssertUnwindSafe(handle(bot, context, msg))
+                .catch_unwind()
+                .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    error!(?error, bot = storage_key, "bot handler failed");
+                }
+                Err(panic_payload) => {
+                    error!(
+                        panic = panic_payload_to_string(&panic_payload),
+                        bot = storage_key,
+                        "bot handler panicked"
+                    );
+                }
             }
 
             respond(())
@@ -61,4 +76,14 @@ where
     .await;
 
     Ok(())
+}
+
+fn panic_payload_to_string(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(text) = payload.downcast_ref::<&'static str>() {
+        return (*text).to_string();
+    }
+    if let Some(text) = payload.downcast_ref::<String>() {
+        return text.clone();
+    }
+    "unknown panic payload".to_string()
 }

@@ -472,46 +472,41 @@ fn quote_sql_string(value: &str) -> String {
 }
 
 pub fn dump_sqlite_database(path: &Path) -> Result<String> {
-    let path = path.to_path_buf();
-    let sql = tokio::task::block_in_place(move || {
-        let conn = rusqlite::Connection::open(path)?;
-        let mut out = String::from("BEGIN TRANSACTION;\n");
+    let conn = rusqlite::Connection::open(path)?;
+    let mut out = String::from("BEGIN TRANSACTION;\n");
 
-        let mut stmt = conn.prepare(
-            "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
-        )?;
-        let tables = stmt.query_map([], |row| {
+    let mut stmt = conn.prepare(
+        "SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    )?;
+    let tables = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    for table in tables {
+        let (name, create_sql) = table?;
+        let _ = writeln!(out, "DROP TABLE IF EXISTS \"{name}\";");
+        out.push_str(&create_sql);
+        out.push_str(";\n");
+
+        let select_sql = format!("SELECT key, value FROM \"{name}\"");
+        let mut rows = conn.prepare(&select_sql)?;
+        let mapped = rows.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
         })?;
 
-        for table in tables {
-            let (name, create_sql) = table?;
-            let _ = writeln!(out, "DROP TABLE IF EXISTS \"{name}\";");
-            out.push_str(&create_sql);
-            out.push_str(";\n");
-
-            let select_sql = format!("SELECT key, value FROM \"{name}\"");
-            let mut rows = conn.prepare(&select_sql)?;
-            let mapped = rows.query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })?;
-
-            for row in mapped {
-                let (key, value) = row?;
-                let _ = writeln!(
-                    out,
-                    "INSERT INTO \"{name}\" (key, value) VALUES ({}, {});",
-                    quote_sql_string(&key),
-                    quote_sql_string(&value),
-                );
-            }
+        for row in mapped {
+            let (key, value) = row?;
+            let _ = writeln!(
+                out,
+                "INSERT INTO \"{name}\" (key, value) VALUES ({}, {});",
+                quote_sql_string(&key),
+                quote_sql_string(&value),
+            );
         }
+    }
 
-        out.push_str("COMMIT;\n");
-        Ok::<String, rusqlite::Error>(out)
-    })?;
-
-    Ok(sql)
+    out.push_str("COMMIT;\n");
+    Ok(out)
 }
 
 pub async fn import_sqlite_dump(path: &Path, dump_sql: &str) -> Result<()> {

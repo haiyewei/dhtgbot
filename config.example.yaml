@@ -52,18 +52,18 @@ bots:
 services:
   amagi:
     base_url: "http://127.0.0.1:4567"
-    start_command: "amagi serve --host 127.0.0.1 --port 4567"
+    start_command: "./bin/amagi serve --host 127.0.0.1 --port 4567"
     startup_timeout_ms: 15000
 
   tdlr:
     base_url: "http://127.0.0.1:8787"
-    start_command: "tdlr service --http-bind 127.0.0.1:8787"
+    start_command: "./bin/tdlr service --http-bind 127.0.0.1:8787"
     startup_timeout_ms: 15000
 
   aria2:
     rpc_url: "http://127.0.0.1:6800/jsonrpc"
     secret:
-    start_command: "aria2c --enable-rpc=true --rpc-listen-all=false --rpc-listen-port=6800"
+    start_command: "./bin/aria2c --enable-rpc=true --rpc-listen-all=false --rpc-listen-port=6800"
     startup_timeout_ms: 15000
 
 database:

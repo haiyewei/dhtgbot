@@ -1,21 +1,19 @@
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use chrono::Timelike;
-use teloxide::payloads::SendDocumentSetters;
 use teloxide::prelude::*;
-use teloxide::types::InputFile;
 use tracing::error;
 use zip::write::SimpleFileOptions;
 use zip::{AesMode, CompressionMethod, ZipWriter};
 
 use crate::AppContext;
 use crate::bots::common::{
-    message_thread_id, parse_group_chat_id, send_html_message, thread_id_from_i32,
+    latest_message_id, message_thread_id, parse_group_chat_id, send_html_message,
 };
 use crate::storage::dump_sqlite_database;
 
@@ -199,35 +197,94 @@ async fn create_and_send_backup(bot: &Bot, context: &AppContext, mode: &str) -> 
         delete_last_auto_backup(bot).await;
     }
 
-    let sql_dump = dump_sqlite_database(&context.config.sqlite_path(&context.root))?;
     let temp_dir = std::env::temp_dir().join("dhtgbot-rs-backup");
     tokio::fs::create_dir_all(&temp_dir).await?;
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     let zip_path = temp_dir.join(format!("backup-{timestamp}.zip"));
-    write_zip_archive(
-        &zip_path,
-        "backup.sql",
-        sql_dump.as_bytes(),
-        &backup.password,
-    )?;
+    let sqlite_path = context.config.sqlite_path(&context.root);
+    build_backup_archive(sqlite_path, zip_path.clone(), backup.password.clone()).await?;
 
     let target_chat_id = parse_group_chat_id(&backup.target_group)?;
-    let mut request = bot
-        .send_document(target_chat_id, InputFile::file(zip_path.clone()))
-        .caption(format!(
-            "📦 数据库备份（{mode}）\n📅 {}",
-            chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
-        ));
+    let target_thread_id = (backup.target_topic > 0).then_some(backup.target_topic);
+    let upload_chat_id = target_chat_id.0.to_string();
+    let caption = format!(
+        "📦 数据库备份（{mode}）\n📅 {}",
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+    );
+    let before_id = latest_message_id(bot, target_chat_id, target_thread_id)
+        .await
+        .ok()
+        .flatten();
+    let file_args = vec![zip_path.to_string_lossy().to_string()];
+    let send_result = context
+        .tdlr
+        .upload(
+            &file_args,
+            &[],
+            &upload_chat_id,
+            target_thread_id,
+            Some(&caption),
+            false,
+            false,
+            None,
+        )
+        .await;
 
-    if backup.target_topic > 0 {
-        request = request.message_thread_id(thread_id_from_i32(backup.target_topic));
+    let _ = tokio::fs::remove_file(zip_path).await;
+    let output = send_result?;
+    if output.code != 0 {
+        let detail = if output.stderr.is_empty() {
+            output.stdout
+        } else {
+            output.stderr
+        };
+        return Err(anyhow!("tdlr backup upload failed: {detail}"));
     }
 
-    let send_result = request.await;
-    let _ = tokio::fs::remove_file(zip_path).await;
-    let sent = send_result?;
-    remember_backup_record(mode, sent.chat.id.0, sent.id.0);
+    let sent_message_id =
+        detect_backup_message_id(bot, target_chat_id, target_thread_id, before_id).await?;
+    remember_backup_record(mode, target_chat_id.0, sent_message_id);
     Ok(())
+}
+
+async fn build_backup_archive(
+    sqlite_path: PathBuf,
+    zip_path: PathBuf,
+    password: String,
+) -> Result<()> {
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        let sql_dump = dump_sqlite_database(&sqlite_path)?;
+        write_zip_archive(&zip_path, "backup.sql", sql_dump.as_bytes(), &password)?;
+        Ok(())
+    })
+    .await??;
+
+    Ok(())
+}
+
+async fn detect_backup_message_id(
+    bot: &Bot,
+    chat_id: ChatId,
+    thread_id: Option<i32>,
+    before_id: Option<i32>,
+) -> Result<i32> {
+    let after_id = latest_message_id(bot, chat_id, thread_id)
+        .await?
+        .ok_or_else(|| anyhow!("failed to detect backup upload message id"))?;
+
+    compute_backup_message_id(before_id, after_id)
+        .ok_or_else(|| anyhow!("failed to compute backup upload message id"))
+}
+
+fn compute_backup_message_id(before_id: Option<i32>, after_id: i32) -> Option<i32> {
+    if let Some(before_id) = before_id {
+        if after_id > before_id + 1 {
+            return Some(after_id - 1);
+        }
+        return None;
+    }
+
+    (after_id > 1).then_some(after_id - 1)
 }
 
 fn write_zip_archive(path: &Path, filename: &str, contents: &[u8], password: &str) -> Result<()> {
@@ -292,7 +349,7 @@ mod tests {
     use std::fs::File;
     use std::io::Read;
 
-    use super::write_zip_archive;
+    use super::{compute_backup_message_id, write_zip_archive};
 
     #[test]
     fn writes_password_protected_backup_zip() {
@@ -314,5 +371,13 @@ mod tests {
 
         assert_eq!(content, "SELECT 1;");
         let _ = std::fs::remove_file(zip_path);
+    }
+
+    #[test]
+    fn computes_backup_message_id_from_probe_messages() {
+        assert_eq!(compute_backup_message_id(Some(100), 102), Some(101));
+        assert_eq!(compute_backup_message_id(Some(100), 101), None);
+        assert_eq!(compute_backup_message_id(None, 77), Some(76));
+        assert_eq!(compute_backup_message_id(None, 1), None);
     }
 }

@@ -77,8 +77,9 @@ where
         .iter()
         .map(|(key, _)| key.as_str())
         .collect::<Vec<_>>();
-    info!(service = name, command = %command, env_keys = ?env_keys, "starting service");
-    spawn_start_command(root, command, env_overrides).await?;
+    let resolved_command = resolve_local_start_command(root, command);
+    info!(service = name, command = %resolved_command, env_keys = ?env_keys, "starting service");
+    spawn_start_command(root, &resolved_command, env_overrides).await?;
     wait_until_healthy(
         Duration::from_millis(config.startup_timeout_ms),
         health_check,
@@ -113,8 +114,9 @@ async fn ensure_aria2_service(
             )
         })?;
 
-    info!(service = "aria2", command = %command, "starting service");
-    spawn_start_command(root, command, &[]).await?;
+    let resolved_command = resolve_local_start_command(root, command);
+    info!(service = "aria2", command = %resolved_command, "starting service");
+    spawn_start_command(root, &resolved_command, &[]).await?;
     wait_until_healthy(
         Duration::from_millis(config.startup_timeout_ms),
         || aria2.health(),
@@ -180,6 +182,73 @@ async fn spawn_start_command(
     Ok(())
 }
 
+fn resolve_local_start_command(root: &Path, command: &str) -> String {
+    let Some((head, tail)) = split_command_head(command) else {
+        return command.to_string();
+    };
+
+    let Some(local_binary) = resolve_local_binary_path(root, &head) else {
+        return command.to_string();
+    };
+
+    let quoted = quote_command_token(&local_binary.to_string_lossy());
+    if tail.is_empty() {
+        quoted
+    } else {
+        format!("{quoted} {tail}")
+    }
+}
+
+fn split_command_head(command: &str) -> Option<(String, String)> {
+    let command = command.trim();
+    if command.is_empty() {
+        return None;
+    }
+
+    if let Some(rest) = command.strip_prefix('"') {
+        let end = rest.find('"')?;
+        let head = rest[..end].to_string();
+        let tail = rest[end + 1..].trim_start().to_string();
+        return Some((head, tail));
+    }
+
+    let mut parts = command.splitn(2, char::is_whitespace);
+    let head = parts.next()?.to_string();
+    let tail = parts.next().unwrap_or("").trim_start().to_string();
+    Some((head, tail))
+}
+
+fn resolve_local_binary_path(root: &Path, token: &str) -> Option<std::path::PathBuf> {
+    let normalized = token.replace('\\', "/");
+    let is_path_like = normalized.contains('/') || normalized.starts_with('.');
+    let mut candidates = Vec::new();
+
+    if is_path_like {
+        candidates.push(root.join(&normalized));
+    } else {
+        candidates.push(root.join("bin").join(&normalized));
+    }
+
+    if cfg!(windows) {
+        let extra = candidates
+            .iter()
+            .filter(|path| path.extension().is_none())
+            .map(|path| path.with_extension("exe"))
+            .collect::<Vec<_>>();
+        candidates.extend(extra);
+    }
+
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+fn quote_command_token(token: &str) -> String {
+    if token.contains(char::is_whitespace) {
+        format!("\"{token}\"")
+    } else {
+        token.to_string()
+    }
+}
+
 fn amagi_start_env(config: &AppConfig) -> Vec<(String, String)> {
     config
         .bots
@@ -231,7 +300,9 @@ async fn warn_if_amagi_missing_twitter_cookie(twitter: &TwitterBridge, cookie_co
 
 #[cfg(test)]
 mod tests {
-    use super::amagi_start_env;
+    use std::fs;
+
+    use super::{amagi_start_env, resolve_local_start_command};
     use crate::config::AppConfig;
 
     fn parse_config(yaml: &str) -> AppConfig {
@@ -291,5 +362,31 @@ database:
                 String::from("auth_token=abc; ct0=def; twid=u%3D1"),
             )]
         );
+    }
+
+    #[test]
+    fn resolve_local_start_command_prefers_workspace_bin_for_bare_command() {
+        let temp_root = std::env::temp_dir().join(format!(
+            "dhtgbot-service-launcher-test-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let bin_dir = temp_root.join("bin");
+        fs::create_dir_all(&bin_dir).unwrap();
+        let binary_path = if cfg!(windows) {
+            bin_dir.join("amagi.exe")
+        } else {
+            bin_dir.join("amagi")
+        };
+        fs::write(&binary_path, b"").unwrap();
+
+        let resolved =
+            resolve_local_start_command(&temp_root, "amagi serve --host 127.0.0.1 --port 4567");
+
+        assert!(resolved.contains(&binary_path.to_string_lossy().to_string()));
+        assert!(resolved.ends_with("serve --host 127.0.0.1 --port 4567"));
+
+        let _ = fs::remove_file(binary_path);
+        let _ = fs::remove_dir_all(temp_root);
     }
 }

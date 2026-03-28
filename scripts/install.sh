@@ -17,18 +17,21 @@ ENTER_SHELL_MODE="${DHTGBOT_INSTALL_ENTER:-auto}"
 SKIP_DEPS=0
 PROXY_PREFIX=""
 
+AMAGI_INSTALL_DIR_EXPLICIT="${AMAGI_INSTALL_DIR+x}"
 AMAGI_REPO_OWNER="${AMAGI_REMOTE_REPO_OWNER:-bandange}"
 AMAGI_REPO_NAME="${AMAGI_REMOTE_REPO_NAME:-amagi-rs}"
 AMAGI_VERSION="${AMAGI_INSTALL_VERSION:-latest}"
 AMAGI_BASE_URL="${AMAGI_REMOTE_BASE_URL:-}"
 AMAGI_INSTALL_DIR="${AMAGI_INSTALL_DIR:-${HOME}/.local/bin}"
 
+TDLR_INSTALL_DIR_EXPLICIT="${TDLR_INSTALL_DIR+x}"
 TDLR_REPO_OWNER="${TDLR_REMOTE_REPO_OWNER:-haiyewei}"
 TDLR_REPO_NAME="${TDLR_REMOTE_REPO_NAME:-tdlr}"
 TDLR_VERSION="${TDLR_INSTALL_VERSION:-latest}"
 TDLR_BASE_URL="${TDLR_REMOTE_BASE_URL:-}"
 TDLR_INSTALL_DIR="${TDLR_INSTALL_DIR:-${HOME}/.local/bin}"
 
+ARIA2_INSTALL_DIR_EXPLICIT="${ARIA2_INSTALL_DIR+x}"
 ARIA2_VERSION="${ARIA2_INSTALL_VERSION:-1.37.0}"
 ARIA2_TAG="${ARIA2_INSTALL_TAG:-release-${ARIA2_VERSION}}"
 ARIA2_BASE_URL="${ARIA2_REMOTE_BASE_URL:-}"
@@ -95,10 +98,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-default_install_dir() {
-  printf '%s\n' "${HOME}/.local/bin"
-}
-
 default_app_home() {
   printf '%s\n' "${HOME}/.local/share/dhtgbot"
 }
@@ -123,65 +122,6 @@ absolute_dir_path() {
   )
 }
 
-resolve_profile_file() {
-  if [[ -n "${DHTGBOT_PROFILE_FILE:-}" ]]; then
-    printf '%s\n' "${DHTGBOT_PROFILE_FILE}"
-    return 0
-  fi
-
-  case "${SHELL##*/}" in
-    bash)
-      printf '%s\n' "${HOME}/.bashrc"
-      ;;
-    zsh)
-      printf '%s\n' "${HOME}/.zshrc"
-      ;;
-    *)
-      printf '%s\n' "${HOME}/.profile"
-      ;;
-  esac
-}
-
-is_sourced() {
-  [[ "${BASH_SOURCE[0]}" != "${0}" ]]
-}
-
-persist_path_entry() {
-  local install_dir="$1"
-  local profile_file
-  local profile_dir
-  local path_line
-
-  profile_file="$(resolve_profile_file)"
-  profile_dir="$(dirname -- "${profile_file}")"
-  path_line="export PATH=\"${install_dir}:\$PATH\""
-
-  mkdir -p "${profile_dir}"
-  touch "${profile_file}"
-
-  if grep -Fqx "${path_line}" "${profile_file}"; then
-    printf '[dhtgbot] PATH entry already exists in %s\n' "${profile_file}"
-  else
-    {
-      printf '\n# dhtgbot installer\n'
-      printf '%s\n' "${path_line}"
-    } >> "${profile_file}"
-    printf '[dhtgbot] added install directory to %s\n' "${profile_file}"
-  fi
-
-  if [[ ":${PATH}:" == *":${install_dir}:"* ]]; then
-    return 0
-  fi
-
-  if is_sourced; then
-    export PATH="${install_dir}:${PATH}"
-    printf '[dhtgbot] updated PATH in the current shell session\n'
-  else
-    printf '[dhtgbot] restart your shell or run the following command to refresh PATH now:\n'
-    printf '  source "%s"\n' "${profile_file}"
-  fi
-}
-
 normalize_overwrite_policy() {
   case "${OVERWRITE_POLICY}" in
     prompt|always|never)
@@ -203,6 +143,23 @@ resolve_command_path() {
   fi
 
   return 1
+}
+
+apply_local_dependency_dirs() {
+  local root_dir="$1"
+  local local_bin_dir="${root_dir}/bin"
+
+  if [[ -z "${AMAGI_INSTALL_DIR_EXPLICIT}" ]]; then
+    AMAGI_INSTALL_DIR="${local_bin_dir}"
+  fi
+
+  if [[ -z "${TDLR_INSTALL_DIR_EXPLICIT}" ]]; then
+    TDLR_INSTALL_DIR="${local_bin_dir}"
+  fi
+
+  if [[ -z "${ARIA2_INSTALL_DIR_EXPLICIT}" ]]; then
+    ARIA2_INSTALL_DIR="${local_bin_dir}"
+  fi
 }
 
 confirm_overwrite() {
@@ -601,8 +558,8 @@ install_release_binary_from_tar() {
   fi
 
   mkdir -p "${install_dir}"
-  existing_path="$(resolve_command_path "${command_name}" || true)"
-  if [[ -z "${existing_path}" && -e "${install_dir}/${binary_name}" ]]; then
+  existing_path=""
+  if [[ -e "${install_dir}/${binary_name}" ]]; then
     existing_path="${install_dir}/${binary_name}"
   fi
 
@@ -616,7 +573,6 @@ install_release_binary_from_tar() {
 
   cp "${binary_path}" "${install_dir}/${binary_name}"
   chmod 755 "${install_dir}/${binary_name}"
-  persist_path_entry "${install_dir}"
   LAST_INSTALL_ACTION="installed"
 }
 
@@ -699,8 +655,8 @@ install_aria2_from_source() {
   fi
 
   mkdir -p "${ARIA2_INSTALL_DIR}"
-  existing_path="$(resolve_command_path "aria2c" || true)"
-  if [[ -z "${existing_path}" && -e "${ARIA2_INSTALL_DIR}/aria2c" ]]; then
+  existing_path=""
+  if [[ -e "${ARIA2_INSTALL_DIR}/aria2c" ]]; then
     existing_path="${ARIA2_INSTALL_DIR}/aria2c"
   fi
 
@@ -724,7 +680,6 @@ install_aria2_from_source() {
     exit 1
   fi
 
-  persist_path_entry "${ARIA2_INSTALL_DIR}"
   LAST_INSTALL_ACTION="installed"
   printf '[dhtgbot] aria2 installed to %s/aria2c\n' "${ARIA2_INSTALL_DIR}"
 }
@@ -783,7 +738,6 @@ install_runtime_layout() {
 
   install_support_scripts "${source_scripts_dir}" "${APP_HOME}"
   write_launcher "${launcher_path}" "${APP_HOME}"
-  persist_path_entry "${INSTALL_DIR}"
 }
 
 copy_file_if_needed() {
@@ -846,7 +800,7 @@ print_workspace_summary() {
   printf '[dhtgbot] then edit %s\n' "${config_path}"
   printf '[dhtgbot] confirm services.amagi.start_command, services.tdlr.start_command, and services.aria2.start_command in config.yaml\n'
   printf '[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml\n'
-  printf '[dhtgbot] the dependency commands are expected in PATH: amagi, tdlr, aria2c\n'
+  printf '[dhtgbot] dependency binaries are installed in %s/bin\n' "${workspace_dir}"
   printf '[dhtgbot] if dependency installation fails later, the project directory is already ready; you can still configure it and install missing dependencies manually\n'
   printf '[dhtgbot] run the bot from the project directory:\n'
   printf '  cd "%s"\n' "${workspace_dir}"
@@ -920,13 +874,15 @@ else
 fi
 
 if [[ "${INSTALL_LAYOUT}" == "runtime" ]]; then
-  if [[ -z "${INSTALL_DIR}" ]]; then
-    INSTALL_DIR="$(default_install_dir)"
-  fi
-
   if [[ -z "${APP_HOME}" ]]; then
     APP_HOME="$(default_app_home)"
   fi
+
+  if [[ -z "${INSTALL_DIR}" ]]; then
+    INSTALL_DIR="${APP_HOME}"
+  fi
+
+  apply_local_dependency_dirs "${APP_HOME}"
 
   if [[ "${SKIP_DEPS}" -ne 1 ]]; then
     install_amagi
@@ -943,11 +899,16 @@ if [[ "${INSTALL_LAYOUT}" == "runtime" ]]; then
   printf '[dhtgbot] then edit %s/config.yaml\n' "${APP_HOME}"
   printf '[dhtgbot] confirm services.amagi.start_command, services.tdlr.start_command, and services.aria2.start_command in config.yaml\n'
   printf '[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml\n'
-  printf '[dhtgbot] the installed commands are now available in PATH: dhtgbot, amagi, tdlr, aria2c\n'
+  printf '[dhtgbot] runtime binaries are installed in %s/bin\n' "${APP_HOME}"
+  printf '[dhtgbot] run the bot from the application directory:\n'
+  printf '  cd "%s"\n' "${APP_HOME}"
+  printf '  ./%s\n' "${BIN_NAME}"
 else
   if [[ -z "${WORKSPACE_DIR}" ]]; then
     WORKSPACE_DIR="$(default_workspace_dir)"
   fi
+
+  apply_local_dependency_dirs "${WORKSPACE_DIR}"
 
   install_workspace_layout "${SOURCE_PACKAGE_DIR}" "${SOURCE_BINARY}" "${SOURCE_TEMPLATE}" "${SOURCE_SCRIPTS_DIR}" "${WORKSPACE_DIR}"
   print_workspace_summary "${WORKSPACE_DIR}"
