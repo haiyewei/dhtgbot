@@ -28,26 +28,17 @@ RUN set -eux; \
 
 FROM rust:1.94-alpine3.21 AS builder
 
-ARG TARGETARCH=amd64
-
 WORKDIR /build
 
-RUN apk add --no-cache build-base musl-dev perl pkgconfig
+RUN apk add --no-cache build-base clang lld musl-dev perl pkgconfig
 
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/build/target \
-    set -eux; \
-    case "${TARGETARCH}" in \
-      amd64) target="x86_64-unknown-linux-musl" ;; \
-      arm64) target="aarch64-unknown-linux-musl" ;; \
-      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    rustup target add "${target}"; \
-    cargo build --locked --release --target "${target}" --bin dhtgbot; \
-    install -Dm755 "target/${target}/release/dhtgbot" /out/dhtgbot
+    cargo build --locked --release --bin dhtgbot \
+    && install -Dm755 target/release/dhtgbot /out/dhtgbot
 
 FROM alpine:3.21 AS runtime
 
