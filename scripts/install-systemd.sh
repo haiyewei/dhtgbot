@@ -110,7 +110,7 @@ download_install_script() {
 
 run_install_as_service_user() {
   local -a args
-  args=(--source "${INSTALL_SOURCE}" --version "${INSTALL_VERSION}" --target "${INSTALL_TARGET}")
+  args=(--source "${INSTALL_SOURCE}" --version "${INSTALL_VERSION}" --target "${INSTALL_TARGET}" --layout runtime --no-enter-shell)
 
   if [[ -n "${INSTALL_DIR}" ]]; then
     args+=(--install-dir "${INSTALL_DIR}")

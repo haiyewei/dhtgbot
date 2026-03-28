@@ -107,13 +107,18 @@ curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/ins
 1. 下载并安装 `amagi`
 2. 下载并安装 `tdlr`
 3. 下载 `aria2` 1.37.0 源码包并安装到用户环境
-4. 下载或安装 `dhtgbot`
-5. 创建应用目录、默认配置、启动入口，并把命令加入用户 `PATH`
+4. 把 `dhtgbot` 发布包解压到当前目录下的 `./dhtgbot`
+5. 创建 `./dhtgbot/config.yaml`
+6. 提示继续配置主程序和下属软件
 
 说明：
 
 - Linux/macOS 上的 `aria2` 当前走源码安装，因此需要基础编译环境
 - 已存在的 `amagi`、`tdlr`、`aria2c` 会先下载，再询问是否覆盖，默认不覆盖
+- `install.sh` 默认不会把 `dhtgbot` 自己装进 `PATH`
+- `install.sh` 成功结束后会打开一个位于项目目录中的交互 shell；退出该 shell 会回到原来的位置
+- 如果需要旧的“运行时安装”行为，可使用 `bash ./scripts/install.sh --layout runtime`
+- `install-systemd.sh` 不受这个默认行为影响，它会显式使用运行时布局，把主程序安装到服务用户的应用目录中
 
 ### 覆盖策略
 

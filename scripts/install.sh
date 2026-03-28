@@ -4,6 +4,7 @@ set -euo pipefail
 BIN_NAME="dhtgbot"
 INSTALLED_BIN_NAME="dhtgbot-real"
 DEFAULT_SOURCE_MODE="${DHTGBOT_INSTALL_SOURCE:-auto}"
+INSTALL_LAYOUT="${DHTGBOT_INSTALL_LAYOUT:-workspace}"
 REMOTE_REPO_OWNER="${DHTGBOT_REMOTE_REPO_OWNER:-haiyewei}"
 REMOTE_REPO_NAME="${DHTGBOT_REMOTE_REPO_NAME:-dhtgbot}"
 REMOTE_VERSION="${DHTGBOT_INSTALL_VERSION:-latest}"
@@ -11,6 +12,8 @@ REMOTE_TARGET="${DHTGBOT_INSTALL_TARGET:-auto}"
 REMOTE_BASE_URL="${DHTGBOT_REMOTE_BASE_URL:-}"
 INSTALL_DIR="${DHTGBOT_INSTALL_DIR:-}"
 APP_HOME="${DHTGBOT_HOME:-}"
+WORKSPACE_DIR="${DHTGBOT_WORKSPACE_DIR:-}"
+ENTER_SHELL_MODE="${DHTGBOT_INSTALL_ENTER:-auto}"
 SKIP_DEPS=0
 PROXY_PREFIX=""
 
@@ -49,6 +52,10 @@ while [[ $# -gt 0 ]]; do
       DEFAULT_SOURCE_MODE="$2"
       shift 2
       ;;
+    --layout)
+      INSTALL_LAYOUT="$2"
+      shift 2
+      ;;
     --version)
       REMOTE_VERSION="$2"
       shift 2
@@ -65,8 +72,16 @@ while [[ $# -gt 0 ]]; do
       APP_HOME="$2"
       shift 2
       ;;
+    --workspace-dir)
+      WORKSPACE_DIR="$2"
+      shift 2
+      ;;
     --skip-dependencies)
       SKIP_DEPS=1
+      shift
+      ;;
+    --no-enter-shell)
+      ENTER_SHELL_MODE="never"
       shift
       ;;
     --proxy)
@@ -88,12 +103,24 @@ default_app_home() {
   printf '%s\n' "${HOME}/.local/share/dhtgbot"
 }
 
+default_workspace_dir() {
+  printf '%s\n' "$(pwd)/${REMOTE_REPO_NAME}"
+}
+
 absolute_file_path() {
   local path="$1"
   local dir
 
   dir="$(cd -- "$(dirname -- "${path}")" && pwd)"
   printf '%s/%s\n' "${dir}" "$(basename -- "${path}")"
+}
+
+absolute_dir_path() {
+  local path="$1"
+  (
+    cd -- "${path}"
+    pwd
+  )
 }
 
 resolve_profile_file() {
@@ -234,6 +261,18 @@ cleanup_temp_paths() {
 }
 
 trap cleanup_temp_paths EXIT
+
+normalize_install_layout() {
+  case "$1" in
+    workspace|runtime)
+      printf '%s\n' "$1"
+      ;;
+    *)
+      printf '[dhtgbot] unsupported install layout: %s\n' "$1" >&2
+      exit 1
+      ;;
+  esac
+}
 
 normalize_remote_target() {
   case "$1" in
@@ -704,7 +743,8 @@ EOF
 
 install_support_scripts() {
   local source_scripts_dir="$1"
-  local target_scripts_dir="${APP_HOME}/scripts"
+  local target_root="$2"
+  local target_scripts_dir="${target_root}/scripts"
 
   if [[ -z "${source_scripts_dir}" || ! -d "${source_scripts_dir}" ]]; then
     return 0
@@ -740,29 +780,108 @@ install_runtime_layout() {
     fi
   fi
 
-  install_support_scripts "${source_scripts_dir}"
+  install_support_scripts "${source_scripts_dir}" "${APP_HOME}"
   write_launcher "${launcher_path}" "${APP_HOME}"
   persist_path_entry "${INSTALL_DIR}"
 }
 
-if [[ -z "${INSTALL_DIR}" ]]; then
-  INSTALL_DIR="$(default_install_dir)"
-fi
+copy_file_if_needed() {
+  local source_path="$1"
+  local target_path="$2"
 
-if [[ -z "${APP_HOME}" ]]; then
-  APP_HOME="$(default_app_home)"
-fi
+  if [[ -z "${source_path}" || ! -f "${source_path}" ]]; then
+    return 0
+  fi
 
-if [[ "${SKIP_DEPS}" -ne 1 ]]; then
-  install_amagi
-  install_tdlr
-  install_aria2_from_source
-fi
+  mkdir -p "$(dirname -- "${target_path}")"
+  if [[ -e "${target_path}" && "$(absolute_file_path "${source_path}")" == "$(absolute_file_path "${target_path}")" ]]; then
+    return 0
+  fi
+
+  cp "${source_path}" "${target_path}"
+}
+
+install_workspace_layout() {
+  local source_package_dir="$1"
+  local source_binary="$2"
+  local source_template="$3"
+  local source_scripts_dir="$4"
+  local workspace_dir="$5"
+  local template_path="${workspace_dir}/config.example.yaml"
+  local config_path="${workspace_dir}/config.yaml"
+
+  mkdir -p "${workspace_dir}" "${workspace_dir}/data" "${workspace_dir}/data/downloads" "${workspace_dir}/logs"
+
+  if [[ -n "${source_package_dir}" && -d "${source_package_dir}" ]]; then
+    if [[ "$(absolute_dir_path "${source_package_dir}")" != "$(absolute_dir_path "${workspace_dir}")" ]]; then
+      cp -R "${source_package_dir}/." "${workspace_dir}/"
+    fi
+  else
+    copy_file_if_needed "${source_binary}" "${workspace_dir}/${BIN_NAME}"
+    copy_file_if_needed "${source_template}" "${template_path}"
+    install_support_scripts "${source_scripts_dir}" "${workspace_dir}"
+  fi
+
+  chmod 755 "${workspace_dir}/${BIN_NAME}" 2>/dev/null || true
+  chmod +x "${workspace_dir}/scripts/"*.sh 2>/dev/null || true
+
+  if [[ -f "${template_path}" ]]; then
+    if [[ ! -f "${config_path}" ]]; then
+      cp "${template_path}" "${config_path}"
+      printf '[dhtgbot] created %s from the example template\n' "${config_path}"
+    else
+      printf '[dhtgbot] kept existing config at %s\n' "${config_path}"
+    fi
+  fi
+}
+
+print_workspace_summary() {
+  local workspace_dir="$1"
+
+  printf '[dhtgbot] extracted project to %s\n' "${workspace_dir}"
+  printf '[dhtgbot] edit %s/config.yaml before the first real run\n' "${workspace_dir}"
+  printf '[dhtgbot] confirm services.amagi.start_command, services.tdlr.start_command, and services.aria2.start_command in config.yaml\n'
+  printf '[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml\n'
+  printf '[dhtgbot] the dependency commands are expected in PATH: amagi, tdlr, aria2c\n'
+  printf '[dhtgbot] if dependency installation fails later, the project directory is already ready; you can still configure it and install missing dependencies manually\n'
+  printf '[dhtgbot] run the bot from the project directory:\n'
+  printf '  cd "%s"\n' "${workspace_dir}"
+  printf '  ./%s\n' "${BIN_NAME}"
+}
+
+maybe_enter_workspace_shell() {
+  local workspace_dir="$1"
+
+  case "${ENTER_SHELL_MODE}" in
+    never)
+      return 0
+      ;;
+    auto)
+      if [[ ! -t 1 || ! -t 2 ]]; then
+        return 0
+      fi
+      ;;
+    always)
+      ;;
+    *)
+      printf '[dhtgbot] unsupported enter-shell mode: %s\n' "${ENTER_SHELL_MODE}" >&2
+      exit 1
+      ;;
+  esac
+
+  printf '[dhtgbot] opening an interactive shell in %s\n' "${workspace_dir}"
+  printf '[dhtgbot] exit this shell when you finish editing config.yaml\n'
+  cd "${workspace_dir}"
+  exec "${SHELL:-/bin/sh}" -i
+}
+
+INSTALL_LAYOUT="$(normalize_install_layout "${INSTALL_LAYOUT}")"
 
 INSTALL_MODE="$(resolve_execution_mode)"
 SOURCE_BINARY=""
 SOURCE_TEMPLATE=""
 SOURCE_SCRIPTS_DIR=""
+SOURCE_PACKAGE_DIR=""
 
 if [[ "${INSTALL_MODE}" == "local" ]]; then
   SOURCE_BINARY="$(resolve_local_binary || true)"
@@ -777,10 +896,15 @@ if [[ "${INSTALL_MODE}" == "local" ]]; then
     printf '[dhtgbot] no local binary found in the extracted package or target/release.\n' >&2
     exit 1
   fi
+
+  if [[ -n "${REPO_ROOT}" && ! -f "${REPO_ROOT}/Cargo.toml" && -f "${REPO_ROOT}/${BIN_NAME}" ]]; then
+    SOURCE_PACKAGE_DIR="${REPO_ROOT}"
+  fi
 else
   remote_asset_name="$(dhtgbot_asset_name)"
   remote_url="$(github_release_url "${REMOTE_REPO_OWNER}" "${REMOTE_REPO_NAME}" "${REMOTE_VERSION}" "${remote_asset_name}" "${REMOTE_BASE_URL}")"
   remote_tmp_dir="$(download_and_extract_archive "${remote_url}" "${remote_asset_name}" "tar.gz")"
+  SOURCE_PACKAGE_DIR="${remote_tmp_dir}"
   SOURCE_BINARY="${remote_tmp_dir}/${BIN_NAME}"
   SOURCE_TEMPLATE="${remote_tmp_dir}/config.example.yaml"
   SOURCE_SCRIPTS_DIR="${remote_tmp_dir}/scripts"
@@ -791,11 +915,42 @@ else
   fi
 fi
 
-install_runtime_layout "${SOURCE_BINARY}" "${SOURCE_TEMPLATE}" "${SOURCE_SCRIPTS_DIR}"
+if [[ "${INSTALL_LAYOUT}" == "runtime" ]]; then
+  if [[ -z "${INSTALL_DIR}" ]]; then
+    INSTALL_DIR="$(default_install_dir)"
+  fi
 
-printf '[dhtgbot] installed launcher to %s/%s\n' "${INSTALL_DIR}" "${BIN_NAME}"
-printf '[dhtgbot] application home: %s\n' "${APP_HOME}"
-printf '[dhtgbot] edit %s/config.yaml before the first real run\n' "${APP_HOME}"
-printf '[dhtgbot] confirm services.amagi.start_command and services.tdlr.start_command in config.yaml\n'
-printf '[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml\n'
-printf '[dhtgbot] the installed commands are now available in PATH: dhtgbot, amagi, tdlr, aria2c\n'
+  if [[ -z "${APP_HOME}" ]]; then
+    APP_HOME="$(default_app_home)"
+  fi
+
+  if [[ "${SKIP_DEPS}" -ne 1 ]]; then
+    install_amagi
+    install_tdlr
+    install_aria2_from_source
+  fi
+
+  install_runtime_layout "${SOURCE_BINARY}" "${SOURCE_TEMPLATE}" "${SOURCE_SCRIPTS_DIR}"
+
+  printf '[dhtgbot] installed launcher to %s/%s\n' "${INSTALL_DIR}" "${BIN_NAME}"
+  printf '[dhtgbot] application home: %s\n' "${APP_HOME}"
+  printf '[dhtgbot] edit %s/config.yaml before the first real run\n' "${APP_HOME}"
+  printf '[dhtgbot] confirm services.amagi.start_command, services.tdlr.start_command, and services.aria2.start_command in config.yaml\n'
+  printf '[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml\n'
+  printf '[dhtgbot] the installed commands are now available in PATH: dhtgbot, amagi, tdlr, aria2c\n'
+else
+  if [[ -z "${WORKSPACE_DIR}" ]]; then
+    WORKSPACE_DIR="$(default_workspace_dir)"
+  fi
+
+  install_workspace_layout "${SOURCE_PACKAGE_DIR}" "${SOURCE_BINARY}" "${SOURCE_TEMPLATE}" "${SOURCE_SCRIPTS_DIR}" "${WORKSPACE_DIR}"
+  print_workspace_summary "${WORKSPACE_DIR}"
+
+  if [[ "${SKIP_DEPS}" -ne 1 ]]; then
+    install_amagi
+    install_tdlr
+    install_aria2_from_source
+  fi
+
+  maybe_enter_workspace_shell "${WORKSPACE_DIR}"
+fi

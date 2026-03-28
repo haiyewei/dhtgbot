@@ -107,13 +107,18 @@ curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/ins
 1. Download and install `amagi`
 2. Download and install `tdlr`
 3. Download the `aria2` 1.37.0 source archive and install it into the user environment
-4. Download or install `dhtgbot`
-5. Create the app home, default config, launcher entry, and add commands to the user `PATH`
+4. Extract the `dhtgbot` release package into `./dhtgbot` under the current directory
+5. Create `./dhtgbot/config.yaml`
+6. Prompt for the remaining configuration work for the main program and dependencies
 
 Notes:
 
 - On Linux and macOS, `aria2` currently uses source installation, so a basic build toolchain is required
 - Existing `amagi`, `tdlr`, or `aria2c` installations are not overwritten automatically
+- `install.sh` does not install `dhtgbot` itself into `PATH` by default
+- after `install.sh` finishes successfully, it opens an interactive shell inside the project directory; exiting that shell returns to the previous location
+- if you need the old runtime-style behavior, use `bash ./scripts/install.sh --layout runtime`
+- `install-systemd.sh` is not affected by this default behavior; it explicitly uses the runtime layout and installs the main program into the service user's app directory
 
 ### Overwrite policy
 
