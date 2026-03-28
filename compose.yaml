@@ -1,0 +1,16 @@
+services:
+  dhtgbot:
+    image: ${DHTGBOT_IMAGE:-docker.io/haiyewei/dhtgbot:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DHTGBOT_HOME: /var/lib/dhtgbot
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - ./.docker-data:/var/lib/dhtgbot
+    ports:
+      - "4567:4567"
+      - "8787:8787"
+      - "6800:6800"

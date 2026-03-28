@@ -29,9 +29,13 @@
 ```text
 .
 ├── src/                   Rust 源码
+├── docker/                容器入口脚本
 ├── scripts/               安装脚本
 ├── .github/workflows/     CI / daily / release
 ├── config.example.yaml    示例配置
+├── config.example.docker.yaml Docker 示例配置
+├── Dockerfile             容器镜像构建文件
+├── compose.yaml           本地 / 远程镜像运行示例
 └── config.yaml            实际运行配置（本地生成，不提交）
 ```
 
@@ -129,7 +133,7 @@ DHTGBOT_INSTALL_OVERWRITE=never    # 永不覆盖
   读取最新正式 Release
 - `DHTGBOT_INSTALL_VERSION=daily`
   读取 `Daily Build` 工作流发布的 `daily` tag 产物
-- `DHTGBOT_INSTALL_VERSION=v0.1.0`
+- `DHTGBOT_INSTALL_VERSION=v0.1.1`
   读取指定 tag 的 Release 产物
 
 依赖程序也采用同样思路：
@@ -137,6 +141,52 @@ DHTGBOT_INSTALL_OVERWRITE=never    # 永不覆盖
 - `amagi` 从 `amagi-rs` 的 GitHub Release 下载
 - `tdlr` 从 `tdlr` 的 GitHub Release 下载
 - `aria2` 使用官方 GitHub Release `release-1.37.0`
+
+## Docker
+
+仓库现在提供完整容器方案，镜像内直接包含：
+
+- `dhtgbot`
+- `amagi` musl Linux 版
+- `tdlr` musl Linux 版
+- `aria2`
+
+容器基础镜像使用 Alpine，容器里的 Rust 二进制链路统一走 `musl`：
+
+- `dhtgbot`：在 Docker 构建阶段编译为 `*-unknown-linux-musl`
+- `amagi`：下载 `*-unknown-linux-musl` 发布包
+- `tdlr`：下载 `*-unknown-linux-musl` 发布包
+- `aria2`：使用 Alpine 仓库版本
+
+容器运行时默认工作目录为 `/var/lib/dhtgbot`，首次启动会自动把 [config.example.docker.yaml](./config.example.docker.yaml) 复制为运行目录内的 `config.yaml`。
+
+本地构建并启动：
+
+```bash
+docker compose up -d --build
+```
+
+直接使用发布镜像：
+
+```bash
+docker pull docker.io/haiyewei/dhtgbot:latest
+docker compose up -d
+```
+
+也可以直接使用 GHCR：
+
+```bash
+docker pull ghcr.io/haiyewei/dhtgbot:latest
+docker run --rm ghcr.io/haiyewei/dhtgbot:latest --help
+```
+
+说明：
+
+- `compose.yaml` 默认把运行数据挂载到仓库下的 `./.docker-data`
+- 容器内默认暴露 `4567`、`8787`、`6800`
+- Docker 专用配置模板把 `amagi` / `tdlr` / `aria2` 改为容器内可对外监听的参数
+- `dhtgbot` 自己仍然通过 `127.0.0.1` 访问这些服务，所以程序行为与本机模式一致
+- 当前 Docker 方案不再依赖 Debian / glibc
 
 ## 配置
 
@@ -254,6 +304,7 @@ cargo run
 - `Cargo CI`
 - `Daily Build`
 - `Release`
+- `Docker Publish`
 
 发布包中会包含：
 
@@ -267,6 +318,28 @@ cargo run
 - 从 release 包中本地执行
 - 从 GitHub Raw 远程执行
 - 再按 workflow 发布结果去下载远程二进制
+
+Docker 镜像发布到：
+
+- `docker.io/haiyewei/dhtgbot:latest`
+- `docker.io/haiyewei/dhtgbot:vX.Y.Z`
+- `docker.io/haiyewei/dhtgbot:sha-<commit>`
+- `ghcr.io/haiyewei/dhtgbot:latest`
+- `ghcr.io/haiyewei/dhtgbot:vX.Y.Z`
+- `ghcr.io/haiyewei/dhtgbot:sha-<commit>`
+
+`Docker Publish` 工作流需要配置这两个 GitHub Secrets：
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
+其中 `DOCKERHUB_TOKEN` 应使用 Docker Hub 的 Access Token，而不是账号密码。
+
+GHCR 不需要额外自定义 Secret，工作流直接使用内置：
+
+- `GITHUB_TOKEN`
+
+前提是工作流保留 `packages: write` 权限。
 
 ## 当前状态
 

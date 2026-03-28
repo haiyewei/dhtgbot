@@ -29,9 +29,13 @@ The project itself is a single binary called `dhtgbot`, but it depends on three 
 ```text
 .
 ├── src/                   Rust sources
+├── docker/                container entry scripts
 ├── scripts/               installation scripts
 ├── .github/workflows/     CI / daily / release
 ├── config.example.yaml    example config
+├── config.example.docker.yaml Docker example config
+├── Dockerfile             container build file
+├── compose.yaml           local / published image runtime example
 └── config.yaml            real runtime config (generated locally, not committed)
 ```
 
@@ -129,7 +133,7 @@ Installer scripts download binaries from the matching workflow output based on v
   downloads the latest stable GitHub Release
 - `DHTGBOT_INSTALL_VERSION=daily`
   downloads assets published by the `Daily Build` workflow under the `daily` tag
-- `DHTGBOT_INSTALL_VERSION=v0.1.0`
+- `DHTGBOT_INSTALL_VERSION=v0.1.1`
   downloads assets from a specific tagged Release
 
 Dependencies follow the same pattern:
@@ -137,6 +141,52 @@ Dependencies follow the same pattern:
 - `amagi` comes from the `amagi-rs` GitHub Release
 - `tdlr` comes from the `tdlr` GitHub Release
 - `aria2` comes from the official `release-1.37.0` GitHub Release
+
+## Docker
+
+The repository now ships a complete container setup. The image includes:
+
+- `dhtgbot`
+- musl Linux `amagi`
+- musl Linux `tdlr`
+- `aria2`
+
+The container base image is Alpine, and the Rust binary chain is aligned on `musl`:
+
+- `dhtgbot`: built in Docker as `*-unknown-linux-musl`
+- `amagi`: downloaded from `*-unknown-linux-musl` release assets
+- `tdlr`: downloaded from `*-unknown-linux-musl` release assets
+- `aria2`: installed from Alpine packages
+
+At runtime the container uses `/var/lib/dhtgbot` as its working directory. On first boot it copies [config.example.docker.yaml](./config.example.docker.yaml) into the runtime directory as `config.yaml`.
+
+Build locally and start:
+
+```bash
+docker compose up -d --build
+```
+
+Use the published image directly:
+
+```bash
+docker pull docker.io/haiyewei/dhtgbot:latest
+docker compose up -d
+```
+
+You can also use GHCR directly:
+
+```bash
+docker pull ghcr.io/haiyewei/dhtgbot:latest
+docker run --rm ghcr.io/haiyewei/dhtgbot:latest --help
+```
+
+Notes:
+
+- `compose.yaml` stores runtime data in `./.docker-data`
+- the container exposes `4567`, `8787`, and `6800`
+- the Docker-specific config template switches `amagi`, `tdlr`, and `aria2` to container-friendly listen flags
+- `dhtgbot` still talks to those services through `127.0.0.1`, so the internal behavior matches the local process model
+- the Docker setup no longer depends on Debian / glibc
 
 ## Configuration
 
@@ -254,6 +304,7 @@ The repository contains three workflows:
 - `Cargo CI`
 - `Daily Build`
 - `Release`
+- `Docker Publish`
 
 Release packages contain:
 
@@ -267,6 +318,28 @@ The installer flow supports both:
 - local execution from a downloaded release package
 - remote execution from GitHub Raw
 - remote binary download from workflow-published assets
+
+Docker images are published to:
+
+- `docker.io/haiyewei/dhtgbot:latest`
+- `docker.io/haiyewei/dhtgbot:vX.Y.Z`
+- `docker.io/haiyewei/dhtgbot:sha-<commit>`
+- `ghcr.io/haiyewei/dhtgbot:latest`
+- `ghcr.io/haiyewei/dhtgbot:vX.Y.Z`
+- `ghcr.io/haiyewei/dhtgbot:sha-<commit>`
+
+The `Docker Publish` workflow requires these GitHub Secrets:
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
+`DOCKERHUB_TOKEN` should be a Docker Hub access token, not your account password.
+
+GHCR does not require an extra custom secret. The workflow uses the built-in:
+
+- `GITHUB_TOKEN`
+
+The workflow must keep `packages: write` permission enabled.
 
 ## Status
 

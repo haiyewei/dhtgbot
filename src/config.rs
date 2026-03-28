@@ -136,4 +136,18 @@ path: ./data/bot.sqlite
         assert_eq!(config.database.db_type, "sqlite");
         assert_eq!(config.database.path, "./data/bot.sqlite");
     }
+
+    #[test]
+    fn docker_config_example_yaml_parses() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("config.example.docker.yaml");
+        let text = fs::read_to_string(path).unwrap();
+        let config: AppConfig = serde_yaml::from_str(&text).unwrap();
+
+        assert_eq!(config.database.db_type, "sqlite");
+        assert_eq!(config.database.path, "./data/bot.sqlite");
+        assert_eq!(
+            config.services.amagi.start_command.as_deref(),
+            Some("amagi serve --host 0.0.0.0 --port 4567")
+        );
+    }
 }

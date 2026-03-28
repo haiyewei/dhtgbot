@@ -33,6 +33,7 @@ dist/
 tmp/
 temp/
 run/
+.docker-data/
 *.service
 
 # IDE

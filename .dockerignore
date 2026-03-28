@@ -1,0 +1,17 @@
+.git
+.github
+target
+data
+temp
+tmp
+run
+logs
+.cache
+.docker-data
+bot.zip
+config.yaml
+*.log
+*.zip
+*.tar.gz
+*.tar.xz
+*.tar.bz2
