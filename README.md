@@ -1,6 +1,8 @@
 # dhtgbot-rs
 
-[English](./README.en.md)
+[English](https://github.com/haiyewei/dhtgbot/blob/master/README.en.md)
+
+[GitHub 仓库](https://github.com/haiyewei/dhtgbot) | [Releases](https://github.com/haiyewei/dhtgbot/releases) | [Docker Hub](https://hub.docker.com/r/haiyewei/dhtgbot) | [GHCR](https://github.com/haiyewei/dhtgbot/pkgs/container/dhtgbot)
 
 `dhtgbot-rs` 是一个纯 Rust 的 Telegram Bot 项目，用来协调多个机器人和外部服务，处理以下几类工作：
 
@@ -135,17 +137,17 @@ DHTGBOT_INSTALL_OVERWRITE=never    # 永不覆盖
 安装脚本会根据版本参数下载对应 workflow 发布的二进制：
 
 - 默认：`latest`
-  读取最新正式 Release
+  读取最新正式 Release：<https://github.com/haiyewei/dhtgbot/releases/latest>
 - `DHTGBOT_INSTALL_VERSION=daily`
-  读取 `Daily Build` 工作流发布的 `daily` tag 产物
+  读取 `Daily Build` 工作流发布的 `daily` tag 产物：<https://github.com/haiyewei/dhtgbot/releases/tag/daily>
 - `DHTGBOT_INSTALL_VERSION=v0.1.1`
-  读取指定 tag 的 Release 产物
+  读取指定 tag 的 Release 产物，例如：<https://github.com/haiyewei/dhtgbot/releases/tag/v0.1.1>
 
 依赖程序也采用同样思路：
 
-- `amagi` 从 `amagi-rs` 的 GitHub Release 下载
-- `tdlr` 从 `tdlr` 的 GitHub Release 下载
-- `aria2` 使用官方 GitHub Release `release-1.37.0`
+- `amagi` 从 `amagi-rs` 的 GitHub Release 下载：<https://github.com/bandange/amagi-rs/releases>
+- `tdlr` 从 `tdlr` 的 GitHub Release 下载：<https://github.com/haiyewei/tdlr/releases>
+- `aria2` 使用官方 GitHub Release `release-1.37.0`：<https://github.com/aria2/aria2/releases/tag/release-1.37.0>
 
 ## Docker
 
@@ -158,12 +160,12 @@ DHTGBOT_INSTALL_OVERWRITE=never    # 永不覆盖
 
 容器基础镜像使用 Alpine，容器里的 Rust 二进制链路统一走 `musl`：
 
-- `dhtgbot`：在 Docker 构建阶段编译为 `*-unknown-linux-musl`
+- `dhtgbot`：从 GitHub Release 下载 `dhtgbot-*-unknown-linux-musl.tar.gz`
 - `amagi`：下载 `*-unknown-linux-musl` 发布包
 - `tdlr`：下载 `*-unknown-linux-musl` 发布包
 - `aria2`：使用 Alpine 仓库版本
 
-容器运行时默认工作目录为 `/var/lib/dhtgbot`，首次启动会自动把 [config.example.docker.yaml](./config.example.docker.yaml) 复制为运行目录内的 `config.yaml`。
+容器运行时默认工作目录为 `/var/lib/dhtgbot`，首次启动会自动把 [config.example.docker.yaml](https://github.com/haiyewei/dhtgbot/blob/master/config.example.docker.yaml) 复制为运行目录内的 `config.yaml`。
 
 本地构建并启动：
 
@@ -187,11 +189,12 @@ docker run --rm ghcr.io/haiyewei/dhtgbot:latest --help
 
 说明：
 
-- `compose.yaml` 默认把运行数据挂载到仓库下的 `./.docker-data`
+- [compose.yaml](https://github.com/haiyewei/dhtgbot/blob/master/compose.yaml) 默认把运行数据挂载到仓库下的 `./.docker-data`
 - 容器内默认暴露 `4567`、`8787`、`6800`
 - Docker 专用配置模板把 `amagi` / `tdlr` / `aria2` 改为容器内可对外监听的参数
 - `dhtgbot` 自己仍然通过 `127.0.0.1` 访问这些服务，所以程序行为与本机模式一致
 - 当前 Docker 方案不再依赖 Debian / glibc
+- `Docker Publish` 工作流会把当前仓库的 `README.md` 同步到 Docker Hub Overview：<https://hub.docker.com/r/haiyewei/dhtgbot>
 
 ## 配置
 
@@ -200,7 +203,7 @@ docker run --rm ghcr.io/haiyewei/dhtgbot:latest --help
 - Windows: `%LOCALAPPDATA%\Programs\dhtgbot\app\config.yaml`
 - Linux/macOS: `~/.local/share/dhtgbot/config.yaml`
 
-可以从 [config.example.yaml](./config.example.yaml) 开始修改。
+可以从 [config.example.yaml](https://github.com/haiyewei/dhtgbot/blob/master/config.example.yaml) 开始修改。
 
 最重要的字段有：
 
@@ -306,10 +309,10 @@ cargo run
 
 仓库包含三套工作流：
 
-- `Cargo CI`
-- `Daily Build`
-- `Release`
-- `Docker Publish`
+- [Cargo CI](https://github.com/haiyewei/dhtgbot/actions/workflows/cargo.yml)
+- [Daily Build](https://github.com/haiyewei/dhtgbot/actions/workflows/daily.yml)
+- [Release](https://github.com/haiyewei/dhtgbot/actions/workflows/release.yml)
+- [Docker Publish](https://github.com/haiyewei/dhtgbot/actions/workflows/docker.yml)
 
 发布包中会包含：
 
@@ -332,6 +335,11 @@ Docker 镜像发布到：
 - `ghcr.io/haiyewei/dhtgbot:latest`
 - `ghcr.io/haiyewei/dhtgbot:vX.Y.Z`
 - `ghcr.io/haiyewei/dhtgbot:sha-<commit>`
+
+镜像仓库页面：
+
+- Docker Hub: <https://hub.docker.com/r/haiyewei/dhtgbot>
+- GHCR: <https://github.com/haiyewei/dhtgbot/pkgs/container/dhtgbot>
 
 `Docker Publish` 工作流需要配置这两个 GitHub Secrets：
 

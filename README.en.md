@@ -1,6 +1,8 @@
 # dhtgbot-rs
 
-[中文](./README.md)
+[中文](https://github.com/haiyewei/dhtgbot/blob/master/README.md)
+
+[GitHub Repository](https://github.com/haiyewei/dhtgbot) | [Releases](https://github.com/haiyewei/dhtgbot/releases) | [Docker Hub](https://hub.docker.com/r/haiyewei/dhtgbot) | [GHCR](https://github.com/haiyewei/dhtgbot/pkgs/container/dhtgbot)
 
 `dhtgbot-rs` is a pure Rust Telegram bot project that coordinates multiple bots and external services for the following tasks:
 
@@ -135,17 +137,17 @@ DHTGBOT_INSTALL_OVERWRITE=never
 Installer scripts download binaries from the matching workflow output based on version selection:
 
 - default: `latest`
-  downloads the latest stable GitHub Release
+  downloads the latest stable GitHub Release: <https://github.com/haiyewei/dhtgbot/releases/latest>
 - `DHTGBOT_INSTALL_VERSION=daily`
-  downloads assets published by the `Daily Build` workflow under the `daily` tag
+  downloads assets published by the `Daily Build` workflow under the `daily` tag: <https://github.com/haiyewei/dhtgbot/releases/tag/daily>
 - `DHTGBOT_INSTALL_VERSION=v0.1.1`
-  downloads assets from a specific tagged Release
+  downloads assets from a specific tagged Release, for example: <https://github.com/haiyewei/dhtgbot/releases/tag/v0.1.1>
 
 Dependencies follow the same pattern:
 
-- `amagi` comes from the `amagi-rs` GitHub Release
-- `tdlr` comes from the `tdlr` GitHub Release
-- `aria2` comes from the official `release-1.37.0` GitHub Release
+- `amagi` comes from the `amagi-rs` GitHub Release: <https://github.com/bandange/amagi-rs/releases>
+- `tdlr` comes from the `tdlr` GitHub Release: <https://github.com/haiyewei/tdlr/releases>
+- `aria2` comes from the official `release-1.37.0` GitHub Release: <https://github.com/aria2/aria2/releases/tag/release-1.37.0>
 
 ## Docker
 
@@ -158,12 +160,12 @@ The repository now ships a complete container setup. The image includes:
 
 The container base image is Alpine, and the Rust binary chain is aligned on `musl`:
 
-- `dhtgbot`: built in Docker as `*-unknown-linux-musl`
+- `dhtgbot`: downloaded from the GitHub Release asset `dhtgbot-*-unknown-linux-musl.tar.gz`
 - `amagi`: downloaded from `*-unknown-linux-musl` release assets
 - `tdlr`: downloaded from `*-unknown-linux-musl` release assets
 - `aria2`: installed from Alpine packages
 
-At runtime the container uses `/var/lib/dhtgbot` as its working directory. On first boot it copies [config.example.docker.yaml](./config.example.docker.yaml) into the runtime directory as `config.yaml`.
+At runtime the container uses `/var/lib/dhtgbot` as its working directory. On first boot it copies [config.example.docker.yaml](https://github.com/haiyewei/dhtgbot/blob/master/config.example.docker.yaml) into the runtime directory as `config.yaml`.
 
 Build locally and start:
 
@@ -187,11 +189,12 @@ docker run --rm ghcr.io/haiyewei/dhtgbot:latest --help
 
 Notes:
 
-- `compose.yaml` stores runtime data in `./.docker-data`
+- [compose.yaml](https://github.com/haiyewei/dhtgbot/blob/master/compose.yaml) stores runtime data in `./.docker-data`
 - the container exposes `4567`, `8787`, and `6800`
 - the Docker-specific config template switches `amagi`, `tdlr`, and `aria2` to container-friendly listen flags
 - `dhtgbot` still talks to those services through `127.0.0.1`, so the internal behavior matches the local process model
 - the Docker setup no longer depends on Debian / glibc
+- the `Docker Publish` workflow syncs the repository `README.md` to the Docker Hub Overview: <https://hub.docker.com/r/haiyewei/dhtgbot>
 
 ## Configuration
 
@@ -200,7 +203,7 @@ After installation, `config.yaml` is created in:
 - Windows: `%LOCALAPPDATA%\Programs\dhtgbot\app\config.yaml`
 - Linux/macOS: `~/.local/share/dhtgbot/config.yaml`
 
-Start from [config.example.yaml](./config.example.yaml).
+Start from [config.example.yaml](https://github.com/haiyewei/dhtgbot/blob/master/config.example.yaml).
 
 Important fields:
 
@@ -306,10 +309,10 @@ Startup sequence:
 
 The repository contains three workflows:
 
-- `Cargo CI`
-- `Daily Build`
-- `Release`
-- `Docker Publish`
+- [Cargo CI](https://github.com/haiyewei/dhtgbot/actions/workflows/cargo.yml)
+- [Daily Build](https://github.com/haiyewei/dhtgbot/actions/workflows/daily.yml)
+- [Release](https://github.com/haiyewei/dhtgbot/actions/workflows/release.yml)
+- [Docker Publish](https://github.com/haiyewei/dhtgbot/actions/workflows/docker.yml)
 
 Release packages contain:
 
@@ -332,6 +335,11 @@ Docker images are published to:
 - `ghcr.io/haiyewei/dhtgbot:latest`
 - `ghcr.io/haiyewei/dhtgbot:vX.Y.Z`
 - `ghcr.io/haiyewei/dhtgbot:sha-<commit>`
+
+Registry pages:
+
+- Docker Hub: <https://hub.docker.com/r/haiyewei/dhtgbot>
+- GHCR: <https://github.com/haiyewei/dhtgbot/pkgs/container/dhtgbot>
 
 The `Docker Publish` workflow requires these GitHub Secrets:
 

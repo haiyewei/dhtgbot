@@ -91,3 +91,13 @@ jobs:
             DHTGBOT_VERSION=${{ inputs.release_tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Update Docker Hub overview
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}
+          short-description: Pure Rust Telegram bot with X/Twitter bridge, media download, and Docker-ready runtime.
+          readme-filepath: ./README.md
+          enable-url-completion: true
