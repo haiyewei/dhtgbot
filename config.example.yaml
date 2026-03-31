@@ -20,14 +20,17 @@ bots:
       thread: 0
       listen_chat: "-1001234567890"
       listen_thread: 0
+      # Numeric tdlr account user_id for /v1/forwards.
       account: "YOUR_TDLR_ACCOUNT_ID"
 
   xdl:
     name: "xdl"
     token: "REPLACE_WITH_XDL_BOT_TOKEN"
     enabled: false
+    # Numeric tdlr account user_id for /v1/uploads.
     account: "YOUR_TDLR_ACCOUNT_ID"
     twitter:
+      # Forwarded to amagi as X-Amagi-Twitter-Cookie on every request.
       # Use single quotes for cookie strings to avoid YAML parsing issues.
       cookies: 'auth_token=...; ct0=...; twid=u%3D...'
       timeout: 15000
@@ -57,6 +60,7 @@ services:
 
   tdlr:
     base_url: "http://127.0.0.1:8787"
+    # dhtgbot uses the structured HTTP API: /v1/version, /v1/forwards, /v1/uploads.
     start_command: "./bin/tdlr service --http-bind 127.0.0.1:8787"
     startup_timeout_ms: 15000
 

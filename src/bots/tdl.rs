@@ -66,14 +66,13 @@ async fn handle_message(bot: &Bot, context: &AppContext, message: &Message) -> R
                     return Ok(());
                 }
                 "version" => {
-                    let output = context.tdlr.version().await?;
+                    let version = context.tdlr.version().await?;
                     let text = format!(
                         "TDLR 版本信息：<br/><br/><pre>{}</pre>",
-                        escape_html(if output.stdout.is_empty() {
-                            &output.stderr
-                        } else {
-                            &output.stdout
-                        })
+                        escape_html(&format!(
+                            "Version: {}\nRustc: {}\nTarget: {}/{}",
+                            version.version, version.rustc, version.target.os, version.target.arch
+                        ))
                     );
                     send_html_message(bot, message.chat.id, message_thread_id(message), text)
                         .await?;

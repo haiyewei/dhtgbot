@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use tokio::process::Command;
-use tracing::{info, warn};
+use tracing::info;
 
 use crate::config::{AppConfig, Aria2ServiceConfig, HttpServiceConfig};
 
@@ -25,14 +25,12 @@ pub async fn ensure_services_started(
         && (config.bots.xdl.tweetdl.is_some()
             || config.bots.xdl.like_dl.is_some()
             || config.bots.xdl.author_track.is_some());
-    let amagi_env = amagi_start_env(config);
 
     if needs_amagi {
-        ensure_http_service(root, "amagi", &config.services.amagi, &amagi_env, || {
+        ensure_http_service(root, "amagi", &config.services.amagi, &[], || {
             twitter.health()
         })
         .await?;
-        warn_if_amagi_missing_twitter_cookie(twitter, !amagi_env.is_empty()).await;
     }
 
     if needs_tdlr {
@@ -249,120 +247,11 @@ fn quote_command_token(token: &str) -> String {
     }
 }
 
-fn amagi_start_env(config: &AppConfig) -> Vec<(String, String)> {
-    config
-        .bots
-        .xdl
-        .twitter
-        .as_ref()
-        .and_then(|twitter| twitter.cookies())
-        .map(|cookies| vec![(String::from("AMAGI_TWITTER_COOKIE"), cookies.to_string())])
-        .unwrap_or_default()
-}
-
-async fn warn_if_amagi_missing_twitter_cookie(twitter: &TwitterBridge, cookie_configured: bool) {
-    if !cookie_configured {
-        return;
-    }
-
-    match twitter.twitter_cookie_bound().await {
-        Ok(Some(true)) => {
-            info!(
-                service = "amagi",
-                platform = "twitter",
-                "twitter cookie is bound"
-            );
-        }
-        Ok(Some(false)) => {
-            warn!(
-                service = "amagi",
-                platform = "twitter",
-                "twitter cookie is configured in xdl but the running amagi service has no twitter cookie bound"
-            );
-        }
-        Ok(None) => {
-            warn!(
-                service = "amagi",
-                platform = "twitter",
-                "amagi root metadata did not report twitter cookie status"
-            );
-        }
-        Err(error) => {
-            warn!(
-                ?error,
-                service = "amagi",
-                platform = "twitter",
-                "failed to verify twitter cookie status from amagi root metadata"
-            );
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
 
-    use super::{amagi_start_env, resolve_local_start_command};
-    use crate::config::AppConfig;
-
-    fn parse_config(yaml: &str) -> AppConfig {
-        serde_yaml::from_str(yaml).unwrap()
-    }
-
-    #[test]
-    fn amagi_start_env_uses_xdl_twitter_cookies() {
-        let config = parse_config(
-            r#"
-bots:
-  master:
-    name: master
-    token: t1
-    enabled: false
-    admins: []
-    backup:
-  tdl:
-    name: tdl
-    token: t2
-    enabled: false
-    forward:
-  xdl:
-    name: xdl
-    token: t3
-    enabled: true
-    account:
-    twitter:
-      cookies: "auth_token=abc; ct0=def; twid=u%3D1"
-    tweetdl:
-    like_dl:
-    author_track:
-services:
-  amagi:
-    base_url: http://127.0.0.1:4567
-    start_command: ""
-    startup_timeout_ms: 1000
-  tdlr:
-    base_url: http://127.0.0.1:8787
-    start_command: ""
-    startup_timeout_ms: 1000
-  aria2:
-    rpc_url: http://127.0.0.1:6800/jsonrpc
-    secret:
-    start_command: ""
-    startup_timeout_ms: 1000
-database:
-  type: sqlite
-  path: ./data/bot.sqlite
-"#,
-        );
-
-        assert_eq!(
-            amagi_start_env(&config),
-            vec![(
-                String::from("AMAGI_TWITTER_COOKIE"),
-                String::from("auth_token=abc; ct0=def; twid=u%3D1"),
-            )]
-        );
-    }
+    use super::resolve_local_start_command;
 
     #[test]
     fn resolve_local_start_command_prefers_workspace_bin_for_bare_command() {

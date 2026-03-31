@@ -74,7 +74,7 @@ irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps
 如果需要给远程执行传参，使用环境变量：
 
 ```powershell
-$env:DHTGBOT_INSTALL_VERSION = "v0.1.2"
+$env:DHTGBOT_INSTALL_VERSION = "v0.2.0"
 $env:DHTGBOT_INSTALL_SKIP_DEPENDENCIES = "1"
 $env:DHTGBOT_INSTALL_PROXY = "1"
 irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
@@ -150,8 +150,8 @@ DHTGBOT_INSTALL_OVERWRITE=never    # 永不覆盖
   读取最新正式 Release：<https://github.com/haiyewei/dhtgbot/releases/latest>
 - `DHTGBOT_INSTALL_VERSION=daily`
   读取 `Daily Build` 工作流发布的 `daily` tag 产物：<https://github.com/haiyewei/dhtgbot/releases/tag/daily>
-- `DHTGBOT_INSTALL_VERSION=v0.1.2`
-  读取指定 tag 的 Release 产物，例如：<https://github.com/haiyewei/dhtgbot/releases/tag/v0.1.2>
+- `DHTGBOT_INSTALL_VERSION=v0.2.0`
+  读取指定 tag 的 Release 产物，例如：<https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.0>
 
 依赖程序也采用同样思路：
 
@@ -232,6 +232,9 @@ docker run --rm ghcr.io/haiyewei/dhtgbot:latest --help
 注意：
 
 - `bots.xdl.twitter.cookies` 建议用单引号包裹整段 Cookie
+- `bots.xdl.twitter.cookies` 会在每次请求 `amagi` 时通过 `X-Amagi-Twitter-Cookie` 请求头转发，不依赖 `amagi` 启动时预先绑定
+- `bots.tdl.forward.account` 和 `bots.xdl.account` 应填写 `tdlr` 账号的数字 `user_id`，因为当前通过 `tdlr` 的结构化 HTTP API 传递 `account`
+- `dhtgbot` 当前通过 `GET /v1/version`、`POST /v1/forwards`、`POST /v1/uploads` 与 `tdlr service --http-bind ...` 交互，不再使用旧的 `/execute` `cliapi`
 - `start_command` 应填写环境中的命令，而不是绝对路径
 - 程序启动时固定从当前工作目录读取 `config.yaml`
 - 安装脚本生成的启动入口会自动切换到应用目录运行

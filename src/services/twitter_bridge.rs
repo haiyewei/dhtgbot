@@ -15,10 +15,13 @@ use self::mapper::{map_paginated_tweets, map_tweet, map_user};
 pub use self::models::{PaginatedTweets, Tweet, TweetMedia, TweetMediaType, UserProfile};
 use crate::config::{HttpServiceConfig, TwitterConfig};
 
+const TWITTER_COOKIE_HEADER: &str = "X-Amagi-Twitter-Cookie";
+
 #[derive(Debug, Clone)]
 pub struct TwitterBridge {
     base_url: String,
     client: Client,
+    twitter_cookie: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -32,17 +35,6 @@ struct TwitterApiMethodSpec {
     route: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct ServiceRoot {
-    platforms: Vec<ServicePlatformSummary>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ServicePlatformSummary {
-    platform: String,
-    has_cookie: bool,
-}
-
 impl TwitterBridge {
     pub fn new(service: &HttpServiceConfig, config: Option<&TwitterConfig>) -> Self {
         Self {
@@ -51,6 +43,7 @@ impl TwitterBridge {
                 .timeout(std::time::Duration::from_secs(config_timeout_secs(config)))
                 .build()
                 .expect("twitter http client should build"),
+            twitter_cookie: configured_twitter_cookie(config),
         }
     }
 
@@ -60,21 +53,15 @@ impl TwitterBridge {
 
     pub async fn health(&self) -> bool {
         let url = format!("{}/health", self.base_url);
-        self.client
-            .get(url)
+        let mut request = self.client.get(url);
+        if let Some(cookie) = self.twitter_cookie.as_deref() {
+            request = request.header(TWITTER_COOKIE_HEADER, cookie);
+        }
+        request
             .send()
             .await
             .map(|response| response.status().is_success())
             .unwrap_or(false)
-    }
-
-    pub async fn twitter_cookie_bound(&self) -> Result<Option<bool>> {
-        let root = self.call_json::<ServiceRoot>("/", &[]).await?;
-        Ok(root
-            .platforms
-            .into_iter()
-            .find(|platform| platform.platform == "twitter")
-            .map(|platform| platform.has_cookie))
     }
 
     async fn call_json<T>(&self, path: &str, query: &[(&str, String)]) -> Result<T>
@@ -91,10 +78,11 @@ impl TwitterBridge {
             "sending twitter bridge request"
         );
         let started_at = std::time::Instant::now();
-        let response = self
-            .client
-            .get(&url)
-            .query(query)
+        let mut request = self.client.get(&url).query(query);
+        if let Some(cookie) = self.twitter_cookie.as_deref() {
+            request = request.header(TWITTER_COOKIE_HEADER, cookie);
+        }
+        let response = request
             .send()
             .await
             .with_context(|| format!("failed to request twitter service: {url}"))?;
@@ -211,6 +199,10 @@ fn summarize_query(query: &[(&str, String)]) -> String {
         .join(",")
 }
 
+fn configured_twitter_cookie(config: Option<&TwitterConfig>) -> Option<String> {
+    config.and_then(|value| value.cookies()).map(str::to_owned)
+}
+
 fn config_timeout_secs(config: Option<&TwitterConfig>) -> u64 {
     config.and_then(|cfg| cfg.timeout).unwrap_or(15)
 }
@@ -241,7 +233,26 @@ fn resolve_user_likes_route(route: &str, username: Option<&str>) -> Result<Strin
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_user_likes_route;
+    use super::{configured_twitter_cookie, resolve_user_likes_route};
+    use crate::config::TwitterConfig;
+
+    #[test]
+    fn uses_trimmed_twitter_cookie_from_config_for_request_override() {
+        let config: TwitterConfig =
+            serde_yaml::from_str("cookies: \"  auth_token=abc; ct0=def; twid=u%3D1  \"").unwrap();
+
+        assert_eq!(
+            configured_twitter_cookie(Some(&config)),
+            Some(String::from("auth_token=abc; ct0=def; twid=u%3D1"))
+        );
+    }
+
+    #[test]
+    fn ignores_blank_twitter_cookie_when_building_request_override() {
+        let config: TwitterConfig = serde_yaml::from_str("cookies: \"   \"").unwrap();
+
+        assert_eq!(configured_twitter_cookie(Some(&config)), None);
+    }
 
     #[test]
     fn resolves_authenticated_likes_route() {

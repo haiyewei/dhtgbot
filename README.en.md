@@ -74,7 +74,7 @@ irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps
 If you need options for remote execution, use environment variables:
 
 ```powershell
-$env:DHTGBOT_INSTALL_VERSION = "v0.1.1"
+$env:DHTGBOT_INSTALL_VERSION = "v0.2.0"
 $env:DHTGBOT_INSTALL_SKIP_DEPENDENCIES = "1"
 $env:DHTGBOT_INSTALL_PROXY = "1"
 irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
@@ -150,8 +150,8 @@ Installer scripts download binaries from the matching workflow output based on v
   downloads the latest stable GitHub Release: <https://github.com/haiyewei/dhtgbot/releases/latest>
 - `DHTGBOT_INSTALL_VERSION=daily`
   downloads assets published by the `Daily Build` workflow under the `daily` tag: <https://github.com/haiyewei/dhtgbot/releases/tag/daily>
-- `DHTGBOT_INSTALL_VERSION=v0.1.1`
-  downloads assets from a specific tagged Release, for example: <https://github.com/haiyewei/dhtgbot/releases/tag/v0.1.1>
+- `DHTGBOT_INSTALL_VERSION=v0.2.0`
+  downloads assets from a specific tagged Release, for example: <https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.0>
 
 Dependencies follow the same pattern:
 
@@ -232,6 +232,9 @@ Important fields:
 Notes:
 
 - It is recommended to wrap `bots.xdl.twitter.cookies` in single quotes
+- `bots.xdl.twitter.cookies` is forwarded to `amagi` on each request through the `X-Amagi-Twitter-Cookie` header, so it does not rely on a cookie bound at `amagi` startup
+- `bots.tdl.forward.account` and `bots.xdl.account` should be the numeric `user_id` of a `tdlr` account because `account` is now sent through the structured HTTP API
+- `dhtgbot` now talks to `tdlr service --http-bind ...` through `GET /v1/version`, `POST /v1/forwards`, and `POST /v1/uploads`, not the legacy `/execute` cliapi
 - `start_command` should use environment commands, not hardcoded absolute paths
 - The program always reads `config.yaml` from the current working directory
 - The generated launcher switches into the app home automatically
