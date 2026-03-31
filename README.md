@@ -74,7 +74,7 @@ irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps
 如果需要给远程执行传参，使用环境变量：
 
 ```powershell
-$env:DHTGBOT_INSTALL_VERSION = "v0.2.1"
+$env:DHTGBOT_INSTALL_VERSION = "v0.2.2"
 $env:DHTGBOT_INSTALL_SKIP_DEPENDENCIES = "1"
 $env:DHTGBOT_INSTALL_PROXY = "1"
 irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
@@ -150,8 +150,8 @@ DHTGBOT_INSTALL_OVERWRITE=never    # 永不覆盖
   读取最新正式 Release：<https://github.com/haiyewei/dhtgbot/releases/latest>
 - `DHTGBOT_INSTALL_VERSION=daily`
   读取 `Daily Build` 工作流发布的 `daily` tag 产物：<https://github.com/haiyewei/dhtgbot/releases/tag/daily>
-- `DHTGBOT_INSTALL_VERSION=v0.2.1`
-  读取指定 tag 的 Release 产物，例如：<https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.1>
+- `DHTGBOT_INSTALL_VERSION=v0.2.2`
+  读取指定 tag 的 Release 产物，例如：<https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.2>
 
 依赖程序也采用同样思路：
 
@@ -238,6 +238,7 @@ docker run --rm -v "$PWD/.docker-data:/var/lib/dhtgbot" ghcr.io/haiyewei/dhtgbot
 - 如果 `config.yaml` 仍保留模板占位值，入口脚本会先提示如何初始化和修改配置，再拒绝启动主程序
 - 容器内默认暴露 `4567`、`8787`、`6800`
 - Docker 专用配置模板把 `amagi` / `tdlr` / `aria2` 改为容器内可对外监听的参数
+- Dockerfile 默认跟随 `dhtgbot`、`amagi-rs` 与 `tdlr` 的最新 GitHub Release；如需固定版本，可在构建时覆盖 `DHTGBOT_VERSION` / `AMAGI_VERSION` / `TDLR_VERSION`
 - `dhtgbot` 自己仍然通过 `127.0.0.1` 访问这些服务，所以程序行为与本机模式一致
 - 当前 Docker 方案不再依赖 Debian / glibc
 - `Docker Publish` 工作流会把当前仓库的 `README.md` 同步到 Docker Hub Overview：<https://hub.docker.com/r/haiyewei/dhtgbot>

@@ -74,7 +74,7 @@ irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps
 If you need options for remote execution, use environment variables:
 
 ```powershell
-$env:DHTGBOT_INSTALL_VERSION = "v0.2.1"
+$env:DHTGBOT_INSTALL_VERSION = "v0.2.2"
 $env:DHTGBOT_INSTALL_SKIP_DEPENDENCIES = "1"
 $env:DHTGBOT_INSTALL_PROXY = "1"
 irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
@@ -150,8 +150,8 @@ Installer scripts download binaries from the matching workflow output based on v
   downloads the latest stable GitHub Release: <https://github.com/haiyewei/dhtgbot/releases/latest>
 - `DHTGBOT_INSTALL_VERSION=daily`
   downloads assets published by the `Daily Build` workflow under the `daily` tag: <https://github.com/haiyewei/dhtgbot/releases/tag/daily>
-- `DHTGBOT_INSTALL_VERSION=v0.2.1`
-  downloads assets from a specific tagged Release, for example: <https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.1>
+- `DHTGBOT_INSTALL_VERSION=v0.2.2`
+  downloads assets from a specific tagged Release, for example: <https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.2>
 
 Dependencies follow the same pattern:
 
@@ -238,6 +238,7 @@ Notes:
 - if `config.yaml` still contains template placeholders, the entrypoint prints setup guidance and refuses to start the main program
 - the container exposes `4567`, `8787`, and `6800`
 - the Docker-specific config template switches `amagi`, `tdlr`, and `aria2` to container-friendly listen flags
+- the Dockerfile tracks the latest GitHub Release for `dhtgbot`, `amagi-rs`, and `tdlr` by default; override `DHTGBOT_VERSION` / `AMAGI_VERSION` / `TDLR_VERSION` at build time if you need a pinned version
 - `dhtgbot` still talks to those services through `127.0.0.1`, so the internal behavior matches the local process model
 - the Docker setup no longer depends on Debian / glibc
 - the `Docker Publish` workflow syncs the repository `README.md` to the Docker Hub Overview: <https://hub.docker.com/r/haiyewei/dhtgbot>

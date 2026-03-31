@@ -5,13 +5,13 @@ FROM alpine:3.21 AS deps
 ARG TARGETARCH=amd64
 ARG DHTGBOT_REPO_OWNER=haiyewei
 ARG DHTGBOT_REPO_NAME=dhtgbot
-ARG DHTGBOT_VERSION=v0.2.1
+ARG DHTGBOT_VERSION=latest
 ARG AMAGI_REPO_OWNER=bandange
 ARG AMAGI_REPO_NAME=amagi-rs
-ARG AMAGI_VERSION=v0.1.0
+ARG AMAGI_VERSION=latest
 ARG TDLR_REPO_OWNER=haiyewei
 ARG TDLR_REPO_NAME=tdlr
-ARG TDLR_VERSION=v0.2.2
+ARG TDLR_VERSION=latest
 
 RUN apk add --no-cache ca-certificates curl tar
 
@@ -26,14 +26,25 @@ RUN set -eux; \
       output="$2"; \
       curl -fsSL --retry 10 --retry-delay 3 --retry-all-errors "$url" -o "$output"; \
     }; \
+    release_asset_url() { \
+      owner="$1"; \
+      repo="$2"; \
+      version="$3"; \
+      asset="$4"; \
+      if [ "$version" = "latest" ]; then \
+        printf 'https://github.com/%s/%s/releases/latest/download/%s' "$owner" "$repo" "$asset"; \
+      else \
+        printf 'https://github.com/%s/%s/releases/download/%s/%s' "$owner" "$repo" "$version" "$asset"; \
+      fi; \
+    }; \
     mkdir -p /out; \
-    fetch_release_asset "https://github.com/${DHTGBOT_REPO_OWNER}/${DHTGBOT_REPO_NAME}/releases/download/${DHTGBOT_VERSION}/dhtgbot-${arch}-unknown-linux-musl.tar.gz" /tmp/dhtgbot.tar.gz; \
+    fetch_release_asset "$(release_asset_url "${DHTGBOT_REPO_OWNER}" "${DHTGBOT_REPO_NAME}" "${DHTGBOT_VERSION}" "dhtgbot-${arch}-unknown-linux-musl.tar.gz")" /tmp/dhtgbot.tar.gz; \
     tar -xzf /tmp/dhtgbot.tar.gz -C /tmp; \
     install -Dm755 /tmp/dhtgbot /out/dhtgbot; \
-    fetch_release_asset "https://github.com/${AMAGI_REPO_OWNER}/${AMAGI_REPO_NAME}/releases/download/${AMAGI_VERSION}/amagi-${arch}-unknown-linux-musl.tar.gz" /tmp/amagi.tar.gz; \
+    fetch_release_asset "$(release_asset_url "${AMAGI_REPO_OWNER}" "${AMAGI_REPO_NAME}" "${AMAGI_VERSION}" "amagi-${arch}-unknown-linux-musl.tar.gz")" /tmp/amagi.tar.gz; \
     tar -xzf /tmp/amagi.tar.gz -C /tmp; \
     install -Dm755 /tmp/amagi /out/amagi; \
-    fetch_release_asset "https://github.com/${TDLR_REPO_OWNER}/${TDLR_REPO_NAME}/releases/download/${TDLR_VERSION}/tdlr-${arch}-unknown-linux-musl.tar.gz" /tmp/tdlr.tar.gz; \
+    fetch_release_asset "$(release_asset_url "${TDLR_REPO_OWNER}" "${TDLR_REPO_NAME}" "${TDLR_VERSION}" "tdlr-${arch}-unknown-linux-musl.tar.gz")" /tmp/tdlr.tar.gz; \
     tar -xzf /tmp/tdlr.tar.gz -C /tmp; \
     install -Dm755 /tmp/tdlr /out/tdlr
 
