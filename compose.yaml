@@ -1,3 +1,7 @@
+# First run:
+#   1. docker compose run --rm dhtgbot init
+#   2. edit ./.docker-data/config.yaml
+#   3. docker compose up -d
 services:
   dhtgbot:
     image: ${DHTGBOT_IMAGE:-docker.io/haiyewei/dhtgbot:latest}

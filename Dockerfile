@@ -5,7 +5,7 @@ FROM alpine:3.21 AS deps
 ARG TARGETARCH=amd64
 ARG DHTGBOT_REPO_OWNER=haiyewei
 ARG DHTGBOT_REPO_NAME=dhtgbot
-ARG DHTGBOT_VERSION=v0.2.0
+ARG DHTGBOT_VERSION=v0.2.1
 ARG AMAGI_REPO_OWNER=bandange
 ARG AMAGI_REPO_NAME=amagi-rs
 ARG AMAGI_VERSION=v0.1.0
@@ -58,11 +58,10 @@ COPY docker/entrypoint.sh /opt/dhtgbot/docker/entrypoint.sh
 RUN chmod 755 /opt/dhtgbot/bin/dhtgbot /usr/local/bin/amagi /usr/local/bin/tdlr /opt/dhtgbot/docker/entrypoint.sh \
     && chown -R dhtgbot:dhtgbot /opt/dhtgbot /var/lib/dhtgbot
 
-USER dhtgbot
 WORKDIR /var/lib/dhtgbot
 
 VOLUME ["/var/lib/dhtgbot"]
 EXPOSE 4567 8787 6800
 
-ENTRYPOINT ["/usr/bin/tini", "--", "/opt/dhtgbot/docker/entrypoint.sh"]
+ENTRYPOINT ["/sbin/tini", "--", "/opt/dhtgbot/docker/entrypoint.sh"]
 CMD ["dhtgbot"]

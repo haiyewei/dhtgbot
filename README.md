@@ -74,7 +74,7 @@ irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps
 如果需要给远程执行传参，使用环境变量：
 
 ```powershell
-$env:DHTGBOT_INSTALL_VERSION = "v0.2.0"
+$env:DHTGBOT_INSTALL_VERSION = "v0.2.1"
 $env:DHTGBOT_INSTALL_SKIP_DEPENDENCIES = "1"
 $env:DHTGBOT_INSTALL_PROXY = "1"
 irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
@@ -150,8 +150,8 @@ DHTGBOT_INSTALL_OVERWRITE=never    # 永不覆盖
   读取最新正式 Release：<https://github.com/haiyewei/dhtgbot/releases/latest>
 - `DHTGBOT_INSTALL_VERSION=daily`
   读取 `Daily Build` 工作流发布的 `daily` tag 产物：<https://github.com/haiyewei/dhtgbot/releases/tag/daily>
-- `DHTGBOT_INSTALL_VERSION=v0.2.0`
-  读取指定 tag 的 Release 产物，例如：<https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.0>
+- `DHTGBOT_INSTALL_VERSION=v0.2.1`
+  读取指定 tag 的 Release 产物，例如：<https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.1>
 
 依赖程序也采用同样思路：
 
@@ -175,31 +175,67 @@ DHTGBOT_INSTALL_OVERWRITE=never    # 永不覆盖
 - `tdlr`：下载 `*-unknown-linux-musl` 发布包
 - `aria2`：使用 Alpine 仓库版本
 
-容器运行时默认工作目录为 `/var/lib/dhtgbot`，首次启动会自动把 [config.example.docker.yaml](https://github.com/haiyewei/dhtgbot/blob/master/config.example.docker.yaml) 复制为运行目录内的 `config.yaml`。
+容器运行时默认工作目录为 `/var/lib/dhtgbot`，程序最终读取的是 `/var/lib/dhtgbot/config.yaml`。入口脚本会先切换到该目录，再启动 `dhtgbot`。
 
-本地构建并启动：
-
-```bash
-docker compose up -d --build
-```
-
-直接使用发布镜像：
+推荐初始化流程：
 
 ```bash
 docker pull docker.io/haiyewei/dhtgbot:latest
+docker compose run --rm dhtgbot init
+```
+
+上面的 `init` 会：
+
+- 创建 `./.docker-data/config.yaml`
+- 如果文件已存在则直接复用，不覆盖
+- 打印运行目录、配置路径和下一步提示
+
+然后在宿主机编辑：
+
+```bash
+./.docker-data/config.yaml
+```
+
+最少需要先替换这些占位值：
+
+- `bots.master.token`
+- `bots.tdl.token` / `bots.xdl.token`（对应 bot 启用时）
+- `bots.tdl.forward.account` / `bots.xdl.account`
+- `bots.xdl.twitter.cookies`（启用 X/Twitter 相关功能时）
+
+配置完成后再启动：
+
+```bash
 docker compose up -d
+```
+
+本地构建镜像也是同样流程：
+
+```bash
+docker compose up -d --build
 ```
 
 也可以直接使用 GHCR：
 
 ```bash
 docker pull ghcr.io/haiyewei/dhtgbot:latest
-docker run --rm ghcr.io/haiyewei/dhtgbot:latest --help
+docker run --rm -v "$PWD/.docker-data:/var/lib/dhtgbot" ghcr.io/haiyewei/dhtgbot:latest help
+docker run --rm -v "$PWD/.docker-data:/var/lib/dhtgbot" ghcr.io/haiyewei/dhtgbot:latest init
 ```
+
+容器额外提供这些辅助命令：
+
+- `help`：显示容器启动帮助
+- `init`：初始化运行目录并生成 `config.yaml`
+- `config-path`：输出容器内配置路径
+- `show-config`：输出当前运行中的 `config.yaml`
+- `example-config`：输出镜像内置的 Docker 配置模板
 
 说明：
 
 - [compose.yaml](https://github.com/haiyewei/dhtgbot/blob/master/compose.yaml) 默认把运行数据挂载到仓库下的 `./.docker-data`
+- `docker compose run --rm dhtgbot init` 之后，应直接在宿主机修改 `./.docker-data/config.yaml`
+- 如果 `config.yaml` 仍保留模板占位值，入口脚本会先提示如何初始化和修改配置，再拒绝启动主程序
 - 容器内默认暴露 `4567`、`8787`、`6800`
 - Docker 专用配置模板把 `amagi` / `tdlr` / `aria2` 改为容器内可对外监听的参数
 - `dhtgbot` 自己仍然通过 `127.0.0.1` 访问这些服务，所以程序行为与本机模式一致

@@ -74,7 +74,7 @@ irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps
 If you need options for remote execution, use environment variables:
 
 ```powershell
-$env:DHTGBOT_INSTALL_VERSION = "v0.2.0"
+$env:DHTGBOT_INSTALL_VERSION = "v0.2.1"
 $env:DHTGBOT_INSTALL_SKIP_DEPENDENCIES = "1"
 $env:DHTGBOT_INSTALL_PROXY = "1"
 irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
@@ -150,8 +150,8 @@ Installer scripts download binaries from the matching workflow output based on v
   downloads the latest stable GitHub Release: <https://github.com/haiyewei/dhtgbot/releases/latest>
 - `DHTGBOT_INSTALL_VERSION=daily`
   downloads assets published by the `Daily Build` workflow under the `daily` tag: <https://github.com/haiyewei/dhtgbot/releases/tag/daily>
-- `DHTGBOT_INSTALL_VERSION=v0.2.0`
-  downloads assets from a specific tagged Release, for example: <https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.0>
+- `DHTGBOT_INSTALL_VERSION=v0.2.1`
+  downloads assets from a specific tagged Release, for example: <https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.1>
 
 Dependencies follow the same pattern:
 
@@ -175,31 +175,67 @@ The container base image is Alpine, and the Rust binary chain is aligned on `mus
 - `tdlr`: downloaded from `*-unknown-linux-musl` release assets
 - `aria2`: installed from Alpine packages
 
-At runtime the container uses `/var/lib/dhtgbot` as its working directory. On first boot it copies [config.example.docker.yaml](https://github.com/haiyewei/dhtgbot/blob/master/config.example.docker.yaml) into the runtime directory as `config.yaml`.
+At runtime the container uses `/var/lib/dhtgbot` as its working directory, and the program ultimately reads `/var/lib/dhtgbot/config.yaml`. The entrypoint switches into that directory before starting `dhtgbot`.
 
-Build locally and start:
-
-```bash
-docker compose up -d --build
-```
-
-Use the published image directly:
+Recommended initialization flow:
 
 ```bash
 docker pull docker.io/haiyewei/dhtgbot:latest
+docker compose run --rm dhtgbot init
+```
+
+That `init` step will:
+
+- create `./.docker-data/config.yaml`
+- reuse the file if it already exists without overwriting it
+- print the runtime directory, config path, and next-step hints
+
+Then edit this file on the host:
+
+```bash
+./.docker-data/config.yaml
+```
+
+At minimum, replace these placeholder values first:
+
+- `bots.master.token`
+- `bots.tdl.token` / `bots.xdl.token` when those bots are enabled
+- `bots.tdl.forward.account` / `bots.xdl.account`
+- `bots.xdl.twitter.cookies` when X/Twitter features are enabled
+
+Start the service only after the config is ready:
+
+```bash
 docker compose up -d
+```
+
+Local image builds follow the same flow:
+
+```bash
+docker compose up -d --build
 ```
 
 You can also use GHCR directly:
 
 ```bash
 docker pull ghcr.io/haiyewei/dhtgbot:latest
-docker run --rm ghcr.io/haiyewei/dhtgbot:latest --help
+docker run --rm -v "$PWD/.docker-data:/var/lib/dhtgbot" ghcr.io/haiyewei/dhtgbot:latest help
+docker run --rm -v "$PWD/.docker-data:/var/lib/dhtgbot" ghcr.io/haiyewei/dhtgbot:latest init
 ```
+
+The container also provides these helper commands:
+
+- `help`: show container startup help
+- `init`: initialize the runtime directory and create `config.yaml`
+- `config-path`: print the in-container config path
+- `show-config`: print the current runtime `config.yaml`
+- `example-config`: print the bundled Docker config template
 
 Notes:
 
 - [compose.yaml](https://github.com/haiyewei/dhtgbot/blob/master/compose.yaml) stores runtime data in `./.docker-data`
+- after `docker compose run --rm dhtgbot init`, edit `./.docker-data/config.yaml` directly on the host
+- if `config.yaml` still contains template placeholders, the entrypoint prints setup guidance and refuses to start the main program
 - the container exposes `4567`, `8787`, and `6800`
 - the Docker-specific config template switches `amagi`, `tdlr`, and `aria2` to container-friendly listen flags
 - `dhtgbot` still talks to those services through `127.0.0.1`, so the internal behavior matches the local process model
