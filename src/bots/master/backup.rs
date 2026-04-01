@@ -1,13 +1,15 @@
 use std::fs::File;
+use std::io::ErrorKind;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 use chrono::Timelike;
 use teloxide::prelude::*;
-use tracing::error;
+use tracing::{error, warn};
 use zip::write::SimpleFileOptions;
 use zip::{AesMode, CompressionMethod, ZipWriter};
 
@@ -197,54 +199,57 @@ async fn create_and_send_backup(bot: &Bot, context: &AppContext, mode: &str) -> 
         delete_last_auto_backup(bot).await;
     }
 
-    let temp_dir = std::env::temp_dir().join("dhtgbot-rs-backup");
+    let temp_dir = next_backup_temp_dir();
     tokio::fs::create_dir_all(&temp_dir).await?;
-    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-    let zip_path = temp_dir.join(format!("backup-{timestamp}.zip"));
-    let sqlite_path = context.config.sqlite_path(&context.root);
-    build_backup_archive(sqlite_path, zip_path.clone(), backup.password.clone()).await?;
+    let backup_result = async {
+        let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+        let zip_path = temp_dir.join(format!("backup-{timestamp}.zip"));
+        let sqlite_path = context.config.sqlite_path(&context.root);
+        build_backup_archive(sqlite_path, zip_path.clone(), backup.password.clone()).await?;
 
-    let target_chat_id = parse_group_chat_id(&backup.target_group)?;
-    let target_thread_id = (backup.target_topic > 0).then_some(backup.target_topic);
-    let upload_chat_id = target_chat_id.0.to_string();
-    let caption = format!(
-        "📦 数据库备份（{mode}）\n📅 {}",
-        chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
-    );
-    let before_id = latest_message_id(bot, target_chat_id, target_thread_id)
-        .await
-        .ok()
-        .flatten();
-    let file_args = vec![zip_path.to_string_lossy().to_string()];
-    let send_result = context
-        .tdlr
-        .upload(
-            &file_args,
-            &[],
-            &upload_chat_id,
-            target_thread_id,
-            Some(&caption),
-            false,
-            false,
-            None,
-        )
-        .await;
+        let target_chat_id = parse_group_chat_id(&backup.target_group)?;
+        let target_thread_id = (backup.target_topic > 0).then_some(backup.target_topic);
+        let upload_chat_id = target_chat_id.0.to_string();
+        let caption = format!(
+            "📦 数据库备份（{mode}）\n📅 {}",
+            chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+        );
+        let before_id = latest_message_id(bot, target_chat_id, target_thread_id)
+            .await
+            .ok()
+            .flatten();
+        let file_args = vec![zip_path.to_string_lossy().to_string()];
+        let output = context
+            .tdlr
+            .upload(
+                &file_args,
+                &[],
+                &upload_chat_id,
+                target_thread_id,
+                Some(&caption),
+                false,
+                true,
+                None,
+            )
+            .await?;
+        if output.code != 0 {
+            let detail = if output.stderr.is_empty() {
+                output.stdout
+            } else {
+                output.stderr
+            };
+            return Err(anyhow!("tdlr backup upload failed: {detail}"));
+        }
 
-    let _ = tokio::fs::remove_file(zip_path).await;
-    let output = send_result?;
-    if output.code != 0 {
-        let detail = if output.stderr.is_empty() {
-            output.stdout
-        } else {
-            output.stderr
-        };
-        return Err(anyhow!("tdlr backup upload failed: {detail}"));
+        let sent_message_id =
+            detect_backup_message_id(bot, target_chat_id, target_thread_id, before_id).await?;
+        remember_backup_record(mode, target_chat_id.0, sent_message_id);
+        Ok(())
     }
+    .await;
 
-    let sent_message_id =
-        detect_backup_message_id(bot, target_chat_id, target_thread_id, before_id).await?;
-    remember_backup_record(mode, target_chat_id.0, sent_message_id);
-    Ok(())
+    cleanup_backup_temp_dir(&temp_dir).await;
+    backup_result
 }
 
 async fn build_backup_archive(
@@ -285,6 +290,25 @@ fn compute_backup_message_id(before_id: Option<i32>, after_id: i32) -> Option<i3
     }
 
     (after_id > 1).then_some(after_id - 1)
+}
+
+fn next_backup_temp_dir() -> PathBuf {
+    static BACKUP_TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let nonce = BACKUP_TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let timestamp = chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    std::env::temp_dir().join(format!(
+        "dhtgbot-rs-backup-{}-{timestamp}-{nonce}",
+        std::process::id()
+    ))
+}
+
+async fn cleanup_backup_temp_dir(path: &Path) {
+    if let Err(error) = tokio::fs::remove_dir_all(path).await {
+        if error.kind() != ErrorKind::NotFound {
+            warn!(path = %path.display(), ?error, "failed to clean up backup temp dir");
+        }
+    }
 }
 
 fn write_zip_archive(path: &Path, filename: &str, contents: &[u8], password: &str) -> Result<()> {
@@ -349,7 +373,7 @@ mod tests {
     use std::fs::File;
     use std::io::Read;
 
-    use super::{compute_backup_message_id, write_zip_archive};
+    use super::{compute_backup_message_id, next_backup_temp_dir, write_zip_archive};
 
     #[test]
     fn writes_password_protected_backup_zip() {
@@ -379,5 +403,15 @@ mod tests {
         assert_eq!(compute_backup_message_id(Some(100), 101), None);
         assert_eq!(compute_backup_message_id(None, 77), Some(76));
         assert_eq!(compute_backup_message_id(None, 1), None);
+    }
+
+    #[test]
+    fn backup_temp_dir_is_unique_per_run() {
+        let first = next_backup_temp_dir();
+        let second = next_backup_temp_dir();
+
+        assert_ne!(first, second);
+        assert!(first.starts_with(std::env::temp_dir()));
+        assert!(second.starts_with(std::env::temp_dir()));
     }
 }
