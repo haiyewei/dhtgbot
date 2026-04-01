@@ -79,18 +79,12 @@ is_runtime_root() {
 
 is_workspace_root() {
   local root="$1"
-  local explicit="${2:-0}"
 
   if [[ -z "${root}" || ! -d "${root}" || ! -f "${root}/config.example.yaml" ]]; then
     return 1
   fi
 
-  if [[ "${explicit}" == "1" ]]; then
-    [[ -f "${root}/dhtgbot" || -f "${root}/Cargo.toml" || -f "${root}/target/release/dhtgbot" || -f "${root}/target/debug/dhtgbot" ]]
-    return $?
-  fi
-
-  [[ -f "${root}/dhtgbot" ]]
+  [[ -f "${root}/dhtgbot" || -f "${root}/Cargo.toml" || -f "${root}/target/release/dhtgbot" || -f "${root}/target/debug/dhtgbot" ]]
 }
 
 add_candidate_root() {
@@ -182,12 +176,12 @@ resolve_install_layout() {
       done
       ;;
     workspace)
-      if [[ -n "${WORKSPACE_DIR}" ]] && is_workspace_root "${WORKSPACE_DIR}" 1; then
+      if [[ -n "${WORKSPACE_DIR}" ]] && is_workspace_root "${WORKSPACE_DIR}"; then
         UPGRADE_LAYOUT="workspace"
         return 0
       fi
       for candidate in "${CANDIDATE_ROOTS[@]}"; do
-        if is_workspace_root "${candidate}" 1; then
+        if is_workspace_root "${candidate}"; then
           WORKSPACE_DIR="${candidate}"
           UPGRADE_LAYOUT="workspace"
           return 0
