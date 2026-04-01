@@ -181,8 +181,9 @@ Notes:
 - On Linux, `aria2` is downloaded from the prebuilt `abcfy2/aria2-static-build` GitHub Release: <https://github.com/abcfy2/aria2-static-build/releases>
 - On macOS, `aria2` is installed with `brew install aria2`
 - If `brew` is not available on macOS, the script fails fast and tells the user to install Homebrew first: <https://brew.sh/>
-- Existing `amagi`, `tdlr`, or `aria2c` installations are not overwritten automatically
-- `install.sh` installs dependencies into environment command directories and writes those directories into the shell profile; `config.yaml` should use plain `amagi` / `tdlr` / `aria2c` commands in `start_command`
+- Existing `amagi`, `tdlr`, or `aria2c` installations prompt for overwrite and default to keeping the current binary
+- Remote `curl ... | bash` runs are non-interactive; if `amagi`, `tdlr`, or `aria2c` already exists in the environment, the installer keeps the existing binaries. Use `DHTGBOT_INSTALL_OVERWRITE=always` or `bash ./scripts/upgrade.sh` to replace them
+- `install.sh` installs dependencies into environment command directories and writes those directories into the shell profile; when `fish` is detected it also writes a startup snippet under `~/.config/fish/conf.d/`, so `config.yaml` should use plain `amagi` / `tdlr` / `aria2c` commands in `start_command`
 - After remote extraction, the original archive is deleted, so the project directory is not left with `*.tar.gz`
 - `install.sh` does not install `dhtgbot` itself into `PATH` by default
 - after `install.sh` finishes successfully, it opens an interactive shell inside the project directory; exiting that shell returns to the previous location

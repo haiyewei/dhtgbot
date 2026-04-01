@@ -126,6 +126,30 @@ resolve_profile_file() {
   esac
 }
 
+sanitize_path_token() {
+  printf '%s' "$1" | sed 's/[^A-Za-z0-9._-]/_/g'
+}
+
+should_persist_fish_path() {
+  if [[ "${SHELL##*/}" == "fish" ]]; then
+    return 0
+  fi
+
+  if command -v fish >/dev/null 2>&1; then
+    return 0
+  fi
+
+  [[ -d "${HOME}/.config/fish" ]]
+}
+
+resolve_fish_path_file() {
+  local install_dir="$1"
+  local token
+
+  token="$(sanitize_path_token "${install_dir}")"
+  printf '%s\n' "${HOME}/.config/fish/conf.d/dhtgbot-path-${token}.fish"
+}
+
 absolute_file_path() {
   local path="$1"
   local dir
@@ -173,6 +197,38 @@ persist_path_entry() {
     export PATH="${install_dir}:${PATH}"
     printf '[dhtgbot] updated PATH in the current shell session\n'
   fi
+
+  persist_fish_path_entry "${install_dir}"
+}
+
+persist_fish_path_entry() {
+  local install_dir="$1"
+  local fish_path_file
+  local fish_dir
+  local path_line
+
+  if [[ -z "${install_dir}" ]] || ! should_persist_fish_path; then
+    return 0
+  fi
+
+  fish_path_file="$(resolve_fish_path_file "${install_dir}")"
+  fish_dir="$(dirname -- "${fish_path_file}")"
+  path_line="    set -gx PATH \"${install_dir}\" \$PATH"
+
+  mkdir -p "${fish_dir}"
+
+  if [[ -f "${fish_path_file}" ]] && grep -Fqx "${path_line}" "${fish_path_file}"; then
+    printf '[dhtgbot] PATH entry already exists in %s\n' "${fish_path_file}"
+    return 0
+  fi
+
+  {
+    printf '# dhtgbot installer\n'
+    printf 'if not contains -- "%s" $PATH\n' "${install_dir}"
+    printf '    set -gx PATH "%s" $PATH\n' "${install_dir}"
+    printf 'end\n'
+  } > "${fish_path_file}"
+  printf '[dhtgbot] added install directory to %s\n' "${fish_path_file}"
 }
 
 add_unique_path_entry() {
@@ -234,11 +290,13 @@ confirm_overwrite() {
       ;;
     never)
       printf '[dhtgbot] overwrite policy is never; keeping existing %s at %s\n' "${display_name}" "${existing_path}"
+      printf '[dhtgbot] use DHTGBOT_INSTALL_OVERWRITE=always or scripts/upgrade.sh if you want to replace it\n'
       return 1
       ;;
     prompt)
       if [[ ! -t 0 ]]; then
         printf '[dhtgbot] existing %s detected at %s; non-interactive mode defaults to skip overwrite\n' "${display_name}" "${existing_path}" >&2
+        printf '[dhtgbot] use DHTGBOT_INSTALL_OVERWRITE=always or scripts/upgrade.sh if you want to replace it\n' >&2
         return 1
       fi
 
@@ -691,16 +749,6 @@ install_release_binary_from_archive() {
   local binary_path
   local existing_path
 
-  if ! tmp_dir="$(download_and_extract_archive "${url}" "${asset_name}" "${archive_kind}")"; then
-    exit 1
-  fi
-  binary_path="${tmp_dir}/${binary_name}"
-
-  if [[ ! -f "${binary_path}" ]]; then
-    printf '[dhtgbot] downloaded package did not contain %s\n' "${binary_name}" >&2
-    exit 1
-  fi
-
   mkdir -p "${install_dir}"
   existing_path=""
   if [[ -e "${install_dir}/${binary_name}" ]]; then
@@ -713,6 +761,16 @@ install_release_binary_from_archive() {
       LAST_INSTALL_ACTION="skipped"
       return 0
     fi
+  fi
+
+  if ! tmp_dir="$(download_and_extract_archive "${url}" "${asset_name}" "${archive_kind}")"; then
+    exit 1
+  fi
+  binary_path="${tmp_dir}/${binary_name}"
+
+  if [[ ! -f "${binary_path}" ]]; then
+    printf '[dhtgbot] downloaded package did not contain %s\n' "${binary_name}" >&2
+    exit 1
   fi
 
   cp "${binary_path}" "${install_dir}/${binary_name}"

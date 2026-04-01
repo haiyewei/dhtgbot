@@ -181,8 +181,9 @@ curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/ins
 - Linux 上的 `aria2` 默认下载 `abcfy2/aria2-static-build` 的预编译包：<https://github.com/abcfy2/aria2-static-build/releases>
 - macOS 上的 `aria2` 优先使用 `brew install aria2`
 - 如果 macOS 环境没有 `brew`，脚本会直接报错并提示先安装 Homebrew：<https://brew.sh/>
-- 已存在的 `amagi`、`tdlr`、`aria2c` 会先下载，再询问是否覆盖，默认不覆盖
-- `install.sh` 会把依赖安装到环境命令目录，并把对应目录写入 shell profile；`config.yaml` 里的 `start_command` 应直接写 `amagi` / `tdlr` / `aria2c`
+- 已存在的 `amagi`、`tdlr`、`aria2c` 会询问是否覆盖，默认不覆盖
+- 远程 `curl ... | bash` 属于非交互模式；如果环境里已经有 `amagi`、`tdlr`、`aria2c`，安装脚本会保留旧二进制。要强制替换，使用 `DHTGBOT_INSTALL_OVERWRITE=always` 或 `bash ./scripts/upgrade.sh`
+- `install.sh` 会把依赖安装到环境命令目录，并把对应目录写入 shell profile；如果检测到 `fish`，还会额外写入 `~/.config/fish/conf.d/`，因此 `config.yaml` 里的 `start_command` 应直接写 `amagi` / `tdlr` / `aria2c`
 - 远程安装解压完成后会删除原始压缩包，不会把 `*.tar.gz` 留在项目目录里
 - `install.sh` 默认不会把 `dhtgbot` 自己装进 `PATH`
 - `install.sh` 成功结束后会打开一个位于项目目录中的交互 shell；退出该 shell 会回到原来的位置
