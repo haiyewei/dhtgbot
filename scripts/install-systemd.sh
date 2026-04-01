@@ -26,6 +26,9 @@ INSTALL_VERSION="${DHTGBOT_INSTALL_VERSION:-latest}"
 INSTALL_TARGET="${DHTGBOT_INSTALL_TARGET:-auto}"
 INSTALL_DIR="${DHTGBOT_INSTALL_DIR:-}"
 APP_HOME="${DHTGBOT_HOME:-}"
+AMAGI_INSTALL_DIR="${AMAGI_INSTALL_DIR:-}"
+TDLR_INSTALL_DIR="${TDLR_INSTALL_DIR:-}"
+ARIA2_INSTALL_DIR="${ARIA2_INSTALL_DIR:-}"
 SKIP_DEPS=0
 USE_PROXY=0
 
@@ -192,7 +195,13 @@ download_install_script() {
 
 run_install_as_service_user() {
   local -a args
+  local -a env_args
   args=(--source "${INSTALL_SOURCE}" --version "${INSTALL_VERSION}" --target "${INSTALL_TARGET}" --layout runtime --no-enter-shell)
+  env_args=(
+    "AMAGI_INSTALL_DIR=${AMAGI_INSTALL_DIR}"
+    "TDLR_INSTALL_DIR=${TDLR_INSTALL_DIR}"
+    "ARIA2_INSTALL_DIR=${ARIA2_INSTALL_DIR}"
+  )
 
   if [[ -n "${INSTALL_DIR}" ]]; then
     args+=(--install-dir "${INSTALL_DIR}")
@@ -211,10 +220,51 @@ run_install_as_service_user() {
   fi
 
   if [[ "$(id -u)" -eq 0 && "${SERVICE_USER}" != "root" ]]; then
-    run_with_sudo -u "${SERVICE_USER}" -H bash "${INSTALL_SCRIPT}" "${args[@]}"
+    run_with_sudo -u "${SERVICE_USER}" -H env "${env_args[@]}" bash "${INSTALL_SCRIPT}" "${args[@]}"
   else
-    bash "${INSTALL_SCRIPT}" "${args[@]}"
+    env "${env_args[@]}" bash "${INSTALL_SCRIPT}" "${args[@]}"
   fi
+}
+
+add_unique_service_path() {
+  local value="$1"
+  local existing
+
+  if [[ -z "${value}" ]]; then
+    return 0
+  fi
+
+  for existing in "${SERVICE_PATH_ENTRIES[@]:-}"; do
+    if [[ "${existing}" == "${value}" ]]; then
+      return 0
+    fi
+  done
+
+  SERVICE_PATH_ENTRIES+=("${value}")
+}
+
+build_service_path() {
+  SERVICE_PATH_ENTRIES=()
+  add_unique_service_path "${AMAGI_INSTALL_DIR}"
+  add_unique_service_path "${TDLR_INSTALL_DIR}"
+  add_unique_service_path "${ARIA2_INSTALL_DIR}"
+  add_unique_service_path "/usr/local/sbin"
+  add_unique_service_path "/usr/local/bin"
+  add_unique_service_path "/usr/sbin"
+  add_unique_service_path "/usr/bin"
+  add_unique_service_path "/bin"
+
+  local joined=""
+  local entry
+  for entry in "${SERVICE_PATH_ENTRIES[@]:-}"; do
+    if [[ -z "${joined}" ]]; then
+      joined="${entry}"
+    else
+      joined="${joined}:${entry}"
+    fi
+  done
+
+  printf '%s\n' "${joined}"
 }
 
 cleanup_temp_install_script() {
@@ -238,6 +288,20 @@ if [[ -z "${SERVICE_HOME}" ]]; then
   printf '[dhtgbot] could not resolve home directory for user %s.\n' "${SERVICE_USER}" >&2
   exit 1
 fi
+
+if [[ -z "${AMAGI_INSTALL_DIR}" ]]; then
+  AMAGI_INSTALL_DIR="${SERVICE_HOME}/.local/bin"
+fi
+
+if [[ -z "${TDLR_INSTALL_DIR}" ]]; then
+  TDLR_INSTALL_DIR="${SERVICE_HOME}/.local/bin"
+fi
+
+if [[ -z "${ARIA2_INSTALL_DIR}" ]]; then
+  ARIA2_INSTALL_DIR="${SERVICE_HOME}/.local/bin"
+fi
+
+SERVICE_PATH_VALUE="$(build_service_path)"
 
 if [[ "${INSTALL_MODE}" == "local" ]]; then
   if [[ -z "${APP_HOME}" ]]; then
@@ -283,7 +347,9 @@ Wants=network-online.target
 Type=simple
 User=${SERVICE_USER}
 WorkingDirectory=${SERVICE_WORKING_DIR}
+Environment=HOME=${SERVICE_HOME}
 Environment=DHTGBOT_HOME=${SERVICE_WORKING_DIR}
+Environment=PATH=${SERVICE_PATH_VALUE}
 ExecStart=${SERVICE_EXEC_START}
 Restart=on-failure
 RestartSec=5

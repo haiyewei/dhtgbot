@@ -48,6 +48,8 @@ The project itself is a single binary called `dhtgbot`, but it depends on three 
 The release package includes:
 
 - `scripts/install.ps1`
+- `scripts/uninstall.ps1`
+- `scripts/upgrade.ps1`
 
 It will:
 
@@ -57,7 +59,11 @@ It will:
 4. Download or install `dhtgbot`
 5. Create the app home, example config, launcher entry, and add commands to the user `PATH`
 
+By default the runtime is installed under `%LOCALAPPDATA%\Programs\dhtgbot\app`.
+Dependencies are installed into their own environment-command directories, for example `%LOCALAPPDATA%\Programs\amagi\bin`, `%LOCALAPPDATA%\Programs\tdlr\bin`, and `%LOCALAPPDATA%\Programs\aria2\bin`, and those directories are added to `PATH`.
+
 If `amagi`, `tdlr`, or `aria2c` already exists in the environment, the script downloads the package first and then asks whether it should overwrite the existing installation. The default answer is no.
+The script only uses existing binaries: it either reuses a local prebuilt `dhtgbot.exe` or downloads GitHub Release assets directly. It does not run `cargo build`.
 
 Example:
 
@@ -70,6 +76,35 @@ Remote execution:
 ```powershell
 irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
 ```
+
+Upgrade an existing installation:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\upgrade.ps1
+```
+
+Uninstall an existing installation:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
+```
+
+`upgrade.ps1` first tries to detect an existing install from the current directory, `.\dhtgbot` under the current directory, `%LOCALAPPDATA%\Programs\dhtgbot\app`, and an existing `dhtgbot` launcher found in `PATH`.
+
+Remote upgrade:
+
+```powershell
+irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/upgrade.ps1 | iex
+```
+
+By default it upgrades all runtime binaries:
+
+- `dhtgbot`
+- `amagi`
+- `tdlr`
+- `aria2`
+
+If you only want to upgrade the main program, add `-SkipDependencies`.
 
 If you need options for remote execution, use environment variables:
 
@@ -85,6 +120,8 @@ irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps
 The release package includes:
 
 - `scripts/install.sh`
+- `scripts/uninstall.sh`
+- `scripts/upgrade.sh`
 - `scripts/install-systemd.sh` (Linux only)
 
 Regular install:
@@ -97,6 +134,24 @@ Remote execution:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.sh | bash
+```
+
+Upgrade an existing installation:
+
+```bash
+bash ./scripts/upgrade.sh
+```
+
+Uninstall an existing installation:
+
+```bash
+bash ./scripts/uninstall.sh
+```
+
+Remote upgrade:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/upgrade.sh | bash
 ```
 
 Install as a `systemd` service on Linux:
@@ -115,22 +170,30 @@ curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/ins
 
 1. Download and install `amagi`
 2. Download and install `tdlr`
-3. Download the `aria2` 1.37.0 source archive and install it into the user environment
+3. Download and install a prebuilt `aria2` package
 4. Extract the `dhtgbot` release package into `./dhtgbot` under the current directory
 5. Keep `./dhtgbot/config.example.yaml` as the reference file
 6. Prompt you to copy it to `./dhtgbot/config.yaml` and continue the remaining configuration work
 
 Notes:
 
-- On Linux and macOS, `aria2` currently uses source installation, so a basic build toolchain is required
+- `install.sh` only uses existing binaries. If no prebuilt local `dhtgbot` is present, it falls back to the remote Release asset instead of running `cargo build`
+- On Linux, `aria2` is downloaded from the prebuilt `abcfy2/aria2-static-build` GitHub Release: <https://github.com/abcfy2/aria2-static-build/releases>
+- On macOS, `aria2` is installed with `brew install aria2`
+- If `brew` is not available on macOS, the script fails fast and tells the user to install Homebrew first: <https://brew.sh/>
 - Existing `amagi`, `tdlr`, or `aria2c` installations are not overwritten automatically
+- `install.sh` installs dependencies into environment command directories and writes those directories into the shell profile; `config.yaml` should use plain `amagi` / `tdlr` / `aria2c` commands in `start_command`
 - After remote extraction, the original archive is deleted, so the project directory is not left with `*.tar.gz`
 - `install.sh` does not install `dhtgbot` itself into `PATH` by default
 - after `install.sh` finishes successfully, it opens an interactive shell inside the project directory; exiting that shell returns to the previous location
 - if you need the old runtime-style behavior, use `bash ./scripts/install.sh --layout runtime`
+- `upgrade.sh` upgrades `dhtgbot`, `amagi`, `tdlr`, and `aria2` by default and forces replacement of the existing binaries
+- `upgrade.sh` first tries to detect an existing install from the current directory, the script directory, and `~/.local/share/dhtgbot`; you can also pass `--workspace-dir` or `--home-dir` explicitly
+- `upgrade.sh` also tries to infer the existing install root from a `dhtgbot` command already available in `PATH`
+- `uninstall.sh` / `uninstall.ps1` first remove `dhtgbot`, then ask one by one whether `amagi`, `tdlr`, and `aria2` should also be uninstalled; in non-interactive environments they are preserved by default
 - `install-systemd.sh` first checks whether it is running from a `scripts/` directory inside an existing project/workspace
 - when it is executed locally from an existing workspace, it reuses `../` as the `systemd` working directory and creates the background service from that local `dhtgbot` binary
-- when it is executed remotely, or when no existing workspace is detected, it falls back to the runtime-layout install and places the main program in the service user's app directory
+- when it is executed remotely, or when no existing workspace is detected, it falls back to the runtime-layout install, places the main program in the service user's app directory, and writes the dependency command directories into the `systemd` service `PATH`
 
 ### Overwrite policy
 
@@ -157,7 +220,9 @@ Dependencies follow the same pattern:
 
 - `amagi` comes from the `amagi-rs` GitHub Release: <https://github.com/bandange/amagi-rs/releases>
 - `tdlr` comes from the `tdlr` GitHub Release: <https://github.com/haiyewei/tdlr/releases>
-- `aria2` comes from the official `release-1.37.0` GitHub Release: <https://github.com/aria2/aria2/releases/tag/release-1.37.0>
+- On Windows, `aria2` comes from the official `release-1.37.0` GitHub Release: <https://github.com/aria2/aria2/releases/tag/release-1.37.0>
+- On Linux, `aria2` comes from the `abcfy2/aria2-static-build` GitHub Release `1.37.0`: <https://github.com/abcfy2/aria2-static-build/releases/tag/1.37.0>
+- On macOS, `aria2` is installed through Homebrew: <https://formulae.brew.sh/formula/aria2>
 
 ## Docker
 

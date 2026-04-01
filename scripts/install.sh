@@ -17,23 +17,24 @@ ENTER_SHELL_MODE="${DHTGBOT_INSTALL_ENTER:-auto}"
 SKIP_DEPS=0
 PROXY_PREFIX=""
 
-AMAGI_INSTALL_DIR_EXPLICIT="${AMAGI_INSTALL_DIR+x}"
 AMAGI_REPO_OWNER="${AMAGI_REMOTE_REPO_OWNER:-bandange}"
 AMAGI_REPO_NAME="${AMAGI_REMOTE_REPO_NAME:-amagi-rs}"
 AMAGI_VERSION="${AMAGI_INSTALL_VERSION:-latest}"
 AMAGI_BASE_URL="${AMAGI_REMOTE_BASE_URL:-}"
 AMAGI_INSTALL_DIR="${AMAGI_INSTALL_DIR:-${HOME}/.local/bin}"
 
-TDLR_INSTALL_DIR_EXPLICIT="${TDLR_INSTALL_DIR+x}"
 TDLR_REPO_OWNER="${TDLR_REMOTE_REPO_OWNER:-haiyewei}"
 TDLR_REPO_NAME="${TDLR_REMOTE_REPO_NAME:-tdlr}"
 TDLR_VERSION="${TDLR_INSTALL_VERSION:-latest}"
 TDLR_BASE_URL="${TDLR_REMOTE_BASE_URL:-}"
 TDLR_INSTALL_DIR="${TDLR_INSTALL_DIR:-${HOME}/.local/bin}"
 
-ARIA2_INSTALL_DIR_EXPLICIT="${ARIA2_INSTALL_DIR+x}"
+ARIA2_REPO_OWNER="${ARIA2_REMOTE_REPO_OWNER:-}"
+ARIA2_REPO_NAME="${ARIA2_REMOTE_REPO_NAME:-}"
 ARIA2_VERSION="${ARIA2_INSTALL_VERSION:-1.37.0}"
-ARIA2_TAG="${ARIA2_INSTALL_TAG:-release-${ARIA2_VERSION}}"
+ARIA2_TAG="${ARIA2_INSTALL_TAG:-${ARIA2_VERSION}}"
+ARIA2_ASSET_NAME="${ARIA2_REMOTE_ASSET_NAME:-}"
+ARIA2_ARCHIVE_KIND="${ARIA2_REMOTE_ARCHIVE_KIND:-zip}"
 ARIA2_BASE_URL="${ARIA2_REMOTE_BASE_URL:-}"
 ARIA2_INSTALL_DIR="${ARIA2_INSTALL_DIR:-${HOME}/.local/bin}"
 OVERWRITE_POLICY="${DHTGBOT_INSTALL_OVERWRITE:-prompt}"
@@ -106,6 +107,25 @@ default_workspace_dir() {
   printf '%s\n' "$(pwd)/${REMOTE_REPO_NAME}"
 }
 
+resolve_profile_file() {
+  if [[ -n "${DHTGBOT_PROFILE_FILE:-}" ]]; then
+    printf '%s\n' "${DHTGBOT_PROFILE_FILE}"
+    return 0
+  fi
+
+  case "${SHELL##*/}" in
+    bash)
+      printf '%s\n' "${HOME}/.bashrc"
+      ;;
+    zsh)
+      printf '%s\n' "${HOME}/.zshrc"
+      ;;
+    *)
+      printf '%s\n' "${HOME}/.profile"
+      ;;
+  esac
+}
+
 absolute_file_path() {
   local path="$1"
   local dir
@@ -122,6 +142,70 @@ absolute_dir_path() {
   )
 }
 
+persist_path_entry() {
+  local install_dir="$1"
+  local profile_file
+  local profile_dir
+  local path_line
+
+  if [[ -z "${install_dir}" ]]; then
+    return 0
+  fi
+
+  profile_file="$(resolve_profile_file)"
+  profile_dir="$(dirname -- "${profile_file}")"
+  path_line="export PATH=\"${install_dir}:\$PATH\""
+
+  mkdir -p "${profile_dir}"
+  touch "${profile_file}"
+
+  if grep -Fqx "${path_line}" "${profile_file}"; then
+    printf '[dhtgbot] PATH entry already exists in %s\n' "${profile_file}"
+  else
+    {
+      printf '\n# dhtgbot installer\n'
+      printf '%s\n' "${path_line}"
+    } >> "${profile_file}"
+    printf '[dhtgbot] added install directory to %s\n' "${profile_file}"
+  fi
+
+  if [[ ":${PATH}:" != *":${install_dir}:"* ]]; then
+    export PATH="${install_dir}:${PATH}"
+    printf '[dhtgbot] updated PATH in the current shell session\n'
+  fi
+}
+
+add_unique_path_entry() {
+  local value="$1"
+  local existing
+
+  if [[ -z "${value}" ]]; then
+    return 0
+  fi
+
+  for existing in "${PATH_ENTRIES_TO_PERSIST[@]:-}"; do
+    if [[ "${existing}" == "${value}" ]]; then
+      return 0
+    fi
+  done
+
+  PATH_ENTRIES_TO_PERSIST+=("${value}")
+}
+
+persist_dependency_path_entries() {
+  PATH_ENTRIES_TO_PERSIST=()
+  add_unique_path_entry "${AMAGI_INSTALL_DIR}"
+  add_unique_path_entry "${TDLR_INSTALL_DIR}"
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    add_unique_path_entry "${ARIA2_INSTALL_DIR}"
+  fi
+
+  local entry
+  for entry in "${PATH_ENTRIES_TO_PERSIST[@]:-}"; do
+    persist_path_entry "${entry}"
+  done
+}
+
 normalize_overwrite_policy() {
   case "${OVERWRITE_POLICY}" in
     prompt|always|never)
@@ -132,34 +216,6 @@ normalize_overwrite_policy() {
       exit 1
       ;;
   esac
-}
-
-resolve_command_path() {
-  local command_name="$1"
-
-  if command -v "${command_name}" >/dev/null 2>&1; then
-    command -v "${command_name}"
-    return 0
-  fi
-
-  return 1
-}
-
-apply_local_dependency_dirs() {
-  local root_dir="$1"
-  local local_bin_dir="${root_dir}/bin"
-
-  if [[ -z "${AMAGI_INSTALL_DIR_EXPLICIT}" ]]; then
-    AMAGI_INSTALL_DIR="${local_bin_dir}"
-  fi
-
-  if [[ -z "${TDLR_INSTALL_DIR_EXPLICIT}" ]]; then
-    TDLR_INSTALL_DIR="${local_bin_dir}"
-  fi
-
-  if [[ -z "${ARIA2_INSTALL_DIR_EXPLICIT}" ]]; then
-    ARIA2_INSTALL_DIR="${local_bin_dir}"
-  fi
 }
 
 confirm_overwrite() {
@@ -353,13 +409,24 @@ github_release_url() {
 download_file() {
   local url="$1"
   local output_path="$2"
+  local retry_count="${DHTGBOT_DOWNLOAD_RETRIES:-5}"
 
   printf '[dhtgbot] downloading %s\n' "${url}" >&2
 
+  rm -f "${output_path}"
+
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "${url}" -o "${output_path}"
+    if ! curl -fL --retry "${retry_count}" --retry-delay 2 --retry-all-errors "${url}" -o "${output_path}"; then
+      rm -f "${output_path}"
+      printf '[dhtgbot] failed to download %s\n' "${url}" >&2
+      return 1
+    fi
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO "${output_path}" "${url}"
+    if ! wget -q --tries="${retry_count}" -O "${output_path}" "${url}"; then
+      rm -f "${output_path}"
+      printf '[dhtgbot] failed to download %s\n' "${url}" >&2
+      return 1
+    fi
   else
     printf '[dhtgbot] curl or wget is required for remote install.\n' >&2
     exit 1
@@ -376,14 +443,51 @@ download_and_extract_archive() {
   tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/dhtgbot-install.XXXXXX")"
   register_temp_path "${tmp_dir}"
   archive_path="${tmp_dir}/${asset_name}"
-  download_file "${url}" "${archive_path}"
+  if ! download_file "${url}" "${archive_path}"; then
+    return 1
+  fi
 
   case "${archive_kind}" in
     tar.gz)
-      tar -xzf "${archive_path}" -C "${tmp_dir}"
+      if ! tar -xzf "${archive_path}" -C "${tmp_dir}"; then
+        rm -f "${archive_path}"
+        printf '[dhtgbot] failed to extract %s\n' "${asset_name}" >&2
+        return 1
+      fi
       ;;
     tar.xz)
-      tar -xJf "${archive_path}" -C "${tmp_dir}"
+      if ! tar -xJf "${archive_path}" -C "${tmp_dir}"; then
+        rm -f "${archive_path}"
+        printf '[dhtgbot] failed to extract %s\n' "${asset_name}" >&2
+        return 1
+      fi
+      ;;
+    zip)
+      if command -v unzip >/dev/null 2>&1; then
+        if ! unzip -q "${archive_path}" -d "${tmp_dir}"; then
+          rm -f "${archive_path}"
+          printf '[dhtgbot] failed to extract %s\n' "${asset_name}" >&2
+          return 1
+        fi
+      elif command -v python3 >/dev/null 2>&1; then
+        if ! python3 - "${archive_path}" "${tmp_dir}" <<'PY'
+import sys
+from zipfile import ZipFile
+
+archive_path, target_dir = sys.argv[1], sys.argv[2]
+with ZipFile(archive_path) as archive:
+    archive.extractall(target_dir)
+PY
+        then
+          rm -f "${archive_path}"
+          printf '[dhtgbot] failed to extract %s\n' "${asset_name}" >&2
+          return 1
+        fi
+      else
+        rm -f "${archive_path}"
+        printf '[dhtgbot] unzip or python3 is required to extract %s\n' "${asset_name}" >&2
+        exit 1
+      fi
       ;;
     *)
       printf '[dhtgbot] unsupported archive kind: %s\n' "${archive_kind}" >&2
@@ -421,12 +525,12 @@ resolve_execution_mode() {
     return 0
   fi
 
-  if [[ -n "${REPO_ROOT}" && -f "${REPO_ROOT}/Cargo.toml" ]]; then
+  if [[ -n "${REPO_ROOT}" && -f "${REPO_ROOT}/target/release/${BIN_NAME}" ]]; then
     printf 'local\n'
     return 0
   fi
 
-  if [[ -n "${REPO_ROOT}" && -f "${REPO_ROOT}/target/release/${BIN_NAME}" ]]; then
+  if [[ -n "${REPO_ROOT}" && -f "${REPO_ROOT}/target/debug/${BIN_NAME}" ]]; then
     printf 'local\n'
     return 0
   fi
@@ -489,29 +593,6 @@ resolve_local_scripts_dir() {
   return 1
 }
 
-build_local_release_binary() {
-  if ! command -v cargo >/dev/null 2>&1; then
-    return 1
-  fi
-
-  if [[ -z "${REPO_ROOT}" || ! -f "${REPO_ROOT}/Cargo.toml" ]]; then
-    return 1
-  fi
-
-  printf '[dhtgbot] no local binary found, building release binary with cargo --bin %s\n' "${BIN_NAME}" >&2
-  (
-    cd "${REPO_ROOT}"
-    cargo build --release --bin "${BIN_NAME}"
-  )
-
-  if [[ -f "${REPO_ROOT}/target/release/${BIN_NAME}" ]]; then
-    printf '%s\n' "${REPO_ROOT}/target/release/${BIN_NAME}"
-    return 0
-  fi
-
-  return 1
-}
-
 dhtgbot_asset_name() {
   printf '%s-%s.tar.gz\n' "${BIN_NAME}" "$(resolve_remote_target)"
 }
@@ -538,18 +619,81 @@ tdlr_asset_name() {
   printf 'tdlr-%s.tar.gz\n' "$(resolve_remote_target)"
 }
 
-install_release_binary_from_tar() {
+aria2_asset_name() {
+  if [[ -n "${ARIA2_ASSET_NAME}" ]]; then
+    printf '%s\n' "${ARIA2_ASSET_NAME}"
+    return 0
+  fi
+
+  case "$(uname -s)" in
+    Linux)
+      case "$(arch_slug)" in
+        x86_64|aarch64)
+          printf 'aria2-%s-linux-musl_static.zip\n' "$(arch_slug)"
+          ;;
+        *)
+          printf '[dhtgbot] unsupported architecture for aria2 install: %s\n' "$(uname -m)" >&2
+          exit 1
+          ;;
+      esac
+      ;;
+    Darwin)
+      printf '[dhtgbot] macOS installs aria2 through Homebrew instead of a GitHub release asset.\n' >&2
+      exit 1
+      ;;
+    *)
+      printf '[dhtgbot] unsupported platform for aria2 install: %s\n' "$(uname -s)" >&2
+      exit 1
+      ;;
+  esac
+}
+
+aria2_release_owner() {
+  if [[ -n "${ARIA2_REPO_OWNER}" ]]; then
+    printf '%s\n' "${ARIA2_REPO_OWNER}"
+    return 0
+  fi
+
+  case "$(uname -s)" in
+    Linux)
+      printf 'abcfy2\n'
+      ;;
+    *)
+      printf 'aria2\n'
+      ;;
+  esac
+}
+
+aria2_release_repo() {
+  if [[ -n "${ARIA2_REPO_NAME}" ]]; then
+    printf '%s\n' "${ARIA2_REPO_NAME}"
+    return 0
+  fi
+
+  case "$(uname -s)" in
+    Linux)
+      printf 'aria2-static-build\n'
+      ;;
+    *)
+      printf 'aria2\n'
+      ;;
+  esac
+}
+
+install_release_binary_from_archive() {
   local url="$1"
   local asset_name="$2"
-  local binary_name="$3"
-  local install_dir="$4"
-  local command_name="$5"
+  local archive_kind="$3"
+  local binary_name="$4"
+  local install_dir="$5"
   local display_name="$6"
   local tmp_dir
   local binary_path
   local existing_path
 
-  tmp_dir="$(download_and_extract_archive "${url}" "${asset_name}" "tar.gz")"
+  if ! tmp_dir="$(download_and_extract_archive "${url}" "${asset_name}" "${archive_kind}")"; then
+    exit 1
+  fi
   binary_path="${tmp_dir}/${binary_name}"
 
   if [[ ! -f "${binary_path}" ]]; then
@@ -576,32 +720,13 @@ install_release_binary_from_tar() {
   LAST_INSTALL_ACTION="installed"
 }
 
-build_jobs() {
-  if command -v nproc >/dev/null 2>&1; then
-    nproc
-    return 0
-  fi
-
-  if command -v getconf >/dev/null 2>&1; then
-    getconf _NPROCESSORS_ONLN
-    return 0
-  fi
-
-  if command -v sysctl >/dev/null 2>&1; then
-    sysctl -n hw.logicalcpu 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || true
-    return 0
-  fi
-
-  printf '4\n'
-}
-
 install_amagi() {
   local asset_name
   local url
 
   asset_name="$(amagi_asset_name)"
   url="$(github_release_url "${AMAGI_REPO_OWNER}" "${AMAGI_REPO_NAME}" "${AMAGI_VERSION}" "${asset_name}" "${AMAGI_BASE_URL}")"
-  install_release_binary_from_tar "${url}" "${asset_name}" "amagi" "${AMAGI_INSTALL_DIR}" "amagi" "amagi"
+  install_release_binary_from_archive "${url}" "${asset_name}" "tar.gz" "amagi" "${AMAGI_INSTALL_DIR}" "amagi"
   if [[ "${LAST_INSTALL_ACTION}" == "installed" ]]; then
     printf '[dhtgbot] amagi installed to %s/amagi\n' "${AMAGI_INSTALL_DIR}"
   fi
@@ -613,75 +738,70 @@ install_tdlr() {
 
   asset_name="$(tdlr_asset_name)"
   url="$(github_release_url "${TDLR_REPO_OWNER}" "${TDLR_REPO_NAME}" "${TDLR_VERSION}" "${asset_name}" "${TDLR_BASE_URL}")"
-  install_release_binary_from_tar "${url}" "${asset_name}" "tdlr" "${TDLR_INSTALL_DIR}" "tdlr" "tdlr"
+  install_release_binary_from_archive "${url}" "${asset_name}" "tar.gz" "tdlr" "${TDLR_INSTALL_DIR}" "tdlr"
   if [[ "${LAST_INSTALL_ACTION}" == "installed" ]]; then
     printf '[dhtgbot] tdlr installed to %s/tdlr\n' "${TDLR_INSTALL_DIR}"
   fi
 }
 
-install_aria2_from_source() {
-  local asset_name="aria2-${ARIA2_VERSION}.tar.xz"
+install_aria2() {
+  local brew_path=""
+  local existing_path=""
+  local target_path=""
+  local outdated_formula=""
+  local asset_name
   local url
-  local tmp_dir
-  local source_dir
-  local prefix_dir
-  local make_jobs
-  local existing_path
 
-  if [[ -n "${ARIA2_BASE_URL}" ]]; then
-    url="${ARIA2_BASE_URL%/}/${asset_name}"
-  else
-    url="${PROXY_PREFIX}https://github.com/aria2/aria2/releases/download/${ARIA2_TAG}/${asset_name}"
-  fi
-
-  if ! command -v make >/dev/null 2>&1; then
-    printf '[dhtgbot] building aria2 from source requires make.\n' >&2
-    exit 1
-  fi
-
-  if ! command -v cc >/dev/null 2>&1 && ! command -v gcc >/dev/null 2>&1 && ! command -v clang >/dev/null 2>&1; then
-    printf '[dhtgbot] building aria2 from source requires a C/C++ toolchain.\n' >&2
-    exit 1
-  fi
-
-  tmp_dir="$(download_and_extract_archive "${url}" "${asset_name}" "tar.xz")"
-  source_dir="${tmp_dir}/aria2-${ARIA2_VERSION}"
-  prefix_dir="$(dirname -- "${ARIA2_INSTALL_DIR}")"
-  make_jobs="$(build_jobs)"
-
-  if [[ ! -d "${source_dir}" ]]; then
-    printf '[dhtgbot] aria2 source directory was not found after extraction.\n' >&2
-    exit 1
-  fi
-
-  mkdir -p "${ARIA2_INSTALL_DIR}"
-  existing_path=""
-  if [[ -e "${ARIA2_INSTALL_DIR}/aria2c" ]]; then
-    existing_path="${ARIA2_INSTALL_DIR}/aria2c"
-  fi
-
-  if [[ -n "${existing_path}" ]]; then
-    if ! confirm_overwrite "aria2" "${existing_path}" "${ARIA2_INSTALL_DIR}/aria2c"; then
-      printf '[dhtgbot] kept existing aria2\n'
-      LAST_INSTALL_ACTION="skipped"
-      return 0
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    brew_path="$(command -v brew 2>/dev/null || true)"
+    if [[ -z "${brew_path}" ]]; then
+      printf '[dhtgbot] macOS aria2 install requires Homebrew. Install Homebrew first: https://brew.sh/\n' >&2
+      exit 1
     fi
+
+    existing_path="$(command -v aria2c 2>/dev/null || true)"
+    if "${brew_path}" list --versions aria2 >/dev/null 2>&1; then
+      target_path="$("${brew_path}" --prefix aria2)/bin/aria2c"
+    else
+      target_path="Homebrew formula aria2"
+    fi
+
+    if [[ -n "${existing_path}" ]]; then
+      if ! confirm_overwrite "aria2" "${existing_path}" "${target_path}"; then
+        printf '[dhtgbot] kept existing aria2\n'
+        LAST_INSTALL_ACTION="skipped"
+        return 0
+      fi
+    fi
+
+    if "${brew_path}" list --versions aria2 >/dev/null 2>&1; then
+      outdated_formula="$("${brew_path}" outdated --formula aria2 2>/dev/null || true)"
+      if [[ -n "${outdated_formula}" ]]; then
+        "${brew_path}" upgrade aria2
+      else
+        printf '[dhtgbot] aria2 is already up to date in Homebrew\n'
+      fi
+    else
+      "${brew_path}" install aria2
+    fi
+
+    target_path="$("${brew_path}" --prefix aria2)/bin/aria2c"
+    if [[ ! -x "${target_path}" ]]; then
+      printf '[dhtgbot] Homebrew finished but %s was not found.\n' "${target_path}" >&2
+      exit 1
+    fi
+
+    LAST_INSTALL_ACTION="installed"
+    printf '[dhtgbot] aria2 installed via Homebrew at %s\n' "${target_path}"
+    return 0
   fi
 
-  (
-    cd "${source_dir}"
-    ./configure --prefix="${prefix_dir}"
-    make -j"${make_jobs}"
-    make install
-  )
-
-  if [[ ! -x "${ARIA2_INSTALL_DIR}/aria2c" ]]; then
-    printf '[dhtgbot] aria2 install completed but %s/aria2c was not found.\n' "${ARIA2_INSTALL_DIR}" >&2
-    exit 1
+  asset_name="$(aria2_asset_name)"
+  url="$(github_release_url "$(aria2_release_owner)" "$(aria2_release_repo)" "${ARIA2_TAG}" "${asset_name}" "${ARIA2_BASE_URL}")"
+  install_release_binary_from_archive "${url}" "${asset_name}" "${ARIA2_ARCHIVE_KIND}" "aria2c" "${ARIA2_INSTALL_DIR}" "aria2"
+  if [[ "${LAST_INSTALL_ACTION}" == "installed" ]]; then
+    printf '[dhtgbot] aria2 installed to %s/aria2c\n' "${ARIA2_INSTALL_DIR}"
   fi
-
-  LAST_INSTALL_ACTION="installed"
-  printf '[dhtgbot] aria2 installed to %s/aria2c\n' "${ARIA2_INSTALL_DIR}"
 }
 
 write_launcher() {
@@ -800,7 +920,14 @@ print_workspace_summary() {
   printf '[dhtgbot] then edit %s\n' "${config_path}"
   printf '[dhtgbot] confirm services.amagi.start_command, services.tdlr.start_command, and services.aria2.start_command in config.yaml\n'
   printf '[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml\n'
-  printf '[dhtgbot] dependency binaries are installed in %s/bin\n' "${workspace_dir}"
+  printf '[dhtgbot] dependencies are installed as environment commands:\n'
+  printf '  amagi -> %s\n' "${AMAGI_INSTALL_DIR}"
+  printf '  tdlr  -> %s\n' "${TDLR_INSTALL_DIR}"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    printf '  aria2 -> Homebrew formula aria2\n'
+  else
+    printf '  aria2 -> %s\n' "${ARIA2_INSTALL_DIR}"
+  fi
   printf '[dhtgbot] if dependency installation fails later, the project directory is already ready; you can still configure it and install missing dependencies manually\n'
   printf '[dhtgbot] run the bot from the project directory:\n'
   printf '  cd "%s"\n' "${workspace_dir}"
@@ -847,11 +974,7 @@ if [[ "${INSTALL_MODE}" == "local" ]]; then
   SOURCE_SCRIPTS_DIR="$(resolve_local_scripts_dir || true)"
 
   if [[ -z "${SOURCE_BINARY}" ]]; then
-    SOURCE_BINARY="$(build_local_release_binary || true)"
-  fi
-
-  if [[ -z "${SOURCE_BINARY}" ]]; then
-    printf '[dhtgbot] no local binary found in the extracted package or target/release.\n' >&2
+    printf '[dhtgbot] no local prebuilt binary found. Place dhtgbot in the package/root directory, or use --source remote.\n' >&2
     exit 1
   fi
 
@@ -861,7 +984,9 @@ if [[ "${INSTALL_MODE}" == "local" ]]; then
 else
   remote_asset_name="$(dhtgbot_asset_name)"
   remote_url="$(github_release_url "${REMOTE_REPO_OWNER}" "${REMOTE_REPO_NAME}" "${REMOTE_VERSION}" "${remote_asset_name}" "${REMOTE_BASE_URL}")"
-  remote_tmp_dir="$(download_and_extract_archive "${remote_url}" "${remote_asset_name}" "tar.gz")"
+  if ! remote_tmp_dir="$(download_and_extract_archive "${remote_url}" "${remote_asset_name}" "tar.gz")"; then
+    exit 1
+  fi
   SOURCE_PACKAGE_DIR="${remote_tmp_dir}"
   SOURCE_BINARY="${remote_tmp_dir}/${BIN_NAME}"
   SOURCE_TEMPLATE="${remote_tmp_dir}/config.example.yaml"
@@ -882,12 +1007,11 @@ if [[ "${INSTALL_LAYOUT}" == "runtime" ]]; then
     INSTALL_DIR="${APP_HOME}"
   fi
 
-  apply_local_dependency_dirs "${APP_HOME}"
-
   if [[ "${SKIP_DEPS}" -ne 1 ]]; then
     install_amagi
     install_tdlr
-    install_aria2_from_source
+    install_aria2
+    persist_dependency_path_entries
   fi
 
   install_runtime_layout "${SOURCE_BINARY}" "${SOURCE_TEMPLATE}" "${SOURCE_SCRIPTS_DIR}"
@@ -899,7 +1023,14 @@ if [[ "${INSTALL_LAYOUT}" == "runtime" ]]; then
   printf '[dhtgbot] then edit %s/config.yaml\n' "${APP_HOME}"
   printf '[dhtgbot] confirm services.amagi.start_command, services.tdlr.start_command, and services.aria2.start_command in config.yaml\n'
   printf '[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml\n'
-  printf '[dhtgbot] runtime binaries are installed in %s/bin\n' "${APP_HOME}"
+  printf '[dhtgbot] dependencies are installed as environment commands:\n'
+  printf '  amagi -> %s\n' "${AMAGI_INSTALL_DIR}"
+  printf '  tdlr  -> %s\n' "${TDLR_INSTALL_DIR}"
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    printf '  aria2 -> Homebrew formula aria2\n'
+  else
+    printf '  aria2 -> %s\n' "${ARIA2_INSTALL_DIR}"
+  fi
   printf '[dhtgbot] run the bot from the application directory:\n'
   printf '  cd "%s"\n' "${APP_HOME}"
   printf '  ./%s\n' "${BIN_NAME}"
@@ -908,16 +1039,16 @@ else
     WORKSPACE_DIR="$(default_workspace_dir)"
   fi
 
-  apply_local_dependency_dirs "${WORKSPACE_DIR}"
-
   install_workspace_layout "${SOURCE_PACKAGE_DIR}" "${SOURCE_BINARY}" "${SOURCE_TEMPLATE}" "${SOURCE_SCRIPTS_DIR}" "${WORKSPACE_DIR}"
-  print_workspace_summary "${WORKSPACE_DIR}"
 
   if [[ "${SKIP_DEPS}" -ne 1 ]]; then
     install_amagi
     install_tdlr
-    install_aria2_from_source
+    install_aria2
+    persist_dependency_path_entries
   fi
+
+  print_workspace_summary "${WORKSPACE_DIR}"
 
   maybe_enter_workspace_shell "${WORKSPACE_DIR}"
 fi

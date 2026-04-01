@@ -1,75 +1,142 @@
+# Copy this file to ./config.yaml before the first real run.
+# dhtgbot always reads ./config.yaml from its current working directory.
+# Optional sections can be disabled by deleting the block or setting it to null.
+
 bots:
   master:
+    # Logical bot name used in logs and storage namespaces.
     name: "master"
+    # Telegram bot token from BotFather.
     token: "REPLACE_WITH_MASTER_BOT_TOKEN"
+    # Enable or disable this bot runtime.
     enabled: true
+    # Telegram user IDs allowed to use admin-only commands.
     admins:
       - 123456789
+    # Optional database backup settings. Delete this block or set backup: null to disable backups.
     backup:
+      # Destination Telegram chat/group ID for backup uploads, usually in -100... form.
       target_group: "-1001234567890"
+      # Destination topic/thread ID inside target_group. Use 0 for the main chat.
       target_topic: 0
+      # ZIP encryption password for backup files. Manual backup commands also require this password.
       password: "CHANGE_BACKUP_PASSWORD"
+      # Optional extra password required by the restore/import flow. Leave empty to disable restore import.
       import_password: "CHANGE_IMPORT_PASSWORD"
 
   tdl:
+    # Logical bot name used in logs and storage namespaces.
     name: "tdl"
+    # Telegram bot token from BotFather.
     token: "REPLACE_WITH_TDL_BOT_TOKEN"
+    # Enable or disable this bot runtime.
     enabled: false
+    # Optional Telegram link forwarding settings. Delete this block or set forward: null to disable forwarding.
     forward:
+      # Destination Telegram chat/group ID that receives forwarded media.
       peer: "-1001234567890"
+      # Destination topic/thread ID inside peer. Use 0 for the main chat.
       thread: 0
+      # Only messages from this chat/group are scanned for Telegram links.
       listen_chat: "-1001234567890"
+      # Only this topic/thread is watched in listen_chat. Use 0 to watch the whole chat.
       listen_thread: 0
-      # Numeric tdlr account user_id for /v1/forwards.
+      # Numeric tdlr account user_id for /v1/forwards. Leave empty to use the default logged-in account.
       account: "YOUR_TDLR_ACCOUNT_ID"
 
   xdl:
+    # Logical bot name used in logs and storage namespaces.
     name: "xdl"
+    # Telegram bot token from BotFather.
     token: "REPLACE_WITH_XDL_BOT_TOKEN"
+    # Enable or disable this bot runtime.
     enabled: false
-    # Numeric tdlr account user_id for /v1/uploads.
+    # Numeric tdlr account user_id for /v1/uploads. Leave empty to use the default logged-in account.
     account: "YOUR_TDLR_ACCOUNT_ID"
+    # Optional X/Twitter request settings. Delete this block or set twitter: null to use amagi defaults only.
     twitter:
-      # Forwarded to amagi as X-Amagi-Twitter-Cookie on every request.
-      # Use single quotes for cookie strings to avoid YAML parsing issues.
+      # Raw Twitter cookies forwarded to amagi as X-Amagi-Twitter-Cookie on every request.
+      # Must include at least auth_token and ct0. Use single quotes to avoid YAML parsing issues.
       cookies: 'auth_token=...; ct0=...; twid=u%3D...'
-      timeout: 15000
+      # HTTP timeout for amagi requests, in seconds.
+      timeout: 15
+    # Optional tweet-link downloader. Delete this block or set tweetdl: null to disable it.
     tweetdl:
+      # Source Telegram chat/group ID that is watched for X/Twitter links.
       listen_group: "-1001234567890"
+      # Only this topic/thread is watched in listen_group. Use 0 to watch the whole chat.
       listen_topic: 0
+      # Destination Telegram chat/group ID for downloaded tweets.
       target_group: "-1001234567890"
+      # Destination topic/thread ID inside target_group. Use 0 for the main chat.
       target_topic: 0
+      # Base directory for temporary downloads. Relative paths are resolved from the current working directory.
+      # Leave empty to use the default ./data/downloads directory.
       download_dir: "./data/downloads"
+    # Optional liked-tweets monitor. Delete this block or set like_dl: null to disable it.
     like_dl:
-      poll_interval: 30
+      # Poll interval in milliseconds. Values below 1000 are automatically raised to 1000.
+      poll_interval: 30000
+      # X/Twitter username used by the likes API. Some amagi versions require this value.
       username: "your_x_username"
+      # Destination Telegram chat/group ID for downloaded liked tweets.
       target_group: "-1001234567890"
+      # Destination topic/thread ID inside target_group. Use 0 for the main chat.
       target_topic: 0
+      # Base directory for temporary downloads. Relative paths are resolved from the current working directory.
+      # Leave empty to use the default ./data/downloads directory.
       download_dir: "./data/downloads"
+    # Optional tracked-author monitor. Delete this block or set author_track: null to disable it.
     author_track:
-      poll_interval: 60
+      # Poll interval in milliseconds. Values below 1000 are automatically raised to 1000.
+      poll_interval: 60000
+      # Destination Telegram chat/group ID for downloaded tracked-author tweets.
       target_group: "-1001234567890"
+      # Destination topic/thread ID inside target_group. Use 0 for the main chat.
       target_topic: 0
+      # Base directory for temporary downloads. Relative paths are resolved from the current working directory.
+      # Leave empty to use the default ./data/downloads directory.
       download_dir: "./data/downloads"
 
+# When a service health check fails, dhtgbot runs start_command from the current working directory.
+# start_command should use environment commands that are available on PATH.
 services:
   amagi:
+    # Base URL of the amagi HTTP service that provides the Twitter bridge endpoints.
     base_url: "http://127.0.0.1:4567"
-    start_command: "./bin/amagi serve --host 127.0.0.1 --port 4567"
+    # Command used to auto-start amagi when it is unhealthy. Leave empty to disable auto-start.
+    start_command: "amagi serve --host 127.0.0.1 --port 4567"
+    # Maximum wait time for the service to become healthy after start_command runs, in milliseconds.
     startup_timeout_ms: 15000
 
   tdlr:
+    # Base URL of the tdlr HTTP service.
     base_url: "http://127.0.0.1:8787"
-    # dhtgbot uses the structured HTTP API: /v1/version, /v1/forwards, /v1/uploads.
-    start_command: "./bin/tdlr service --http-bind 127.0.0.1:8787"
+    # Command used to auto-start tdlr when it is unhealthy. dhtgbot uses the HTTP API:
+    # /v1/version, /v1/forwards, and /v1/uploads. Leave empty to disable auto-start.
+    start_command: "tdlr service --http-bind 127.0.0.1:8787"
+    # Maximum wait time for the service to become healthy after start_command runs, in milliseconds.
     startup_timeout_ms: 15000
 
   aria2:
+    # JSON-RPC endpoint of aria2, usually ending with /jsonrpc.
     rpc_url: "http://127.0.0.1:6800/jsonrpc"
+    # Optional aria2 RPC secret without the "token:" prefix. Leave empty if RPC auth is disabled.
+    # If you set this value, aria2 must be started with the same --rpc-secret.
     secret:
-    start_command: "./bin/aria2c --enable-rpc=true --rpc-listen-all=false --rpc-listen-port=6800"
+    # Command used to auto-start aria2 when it is unhealthy. Leave empty to disable auto-start.
+    start_command: "aria2c --enable-rpc=true --rpc-listen-all=false --rpc-listen-port=6800"
+    # Maximum wait time for the service to become healthy after start_command runs, in milliseconds.
     startup_timeout_ms: 15000
 
 database:
+  # Database backend type. The current Rust runtime supports only "sqlite".
   type: "sqlite"
+  # SQLite database file path. Relative paths are resolved from the current working directory.
   path: "./data/bot.sqlite"
+  # Reserved for non-sqlite backends. These fields are currently ignored because only sqlite is supported.
+  # host:
+  # port:
+  # user:
+  # password:
+  # database:

@@ -65,8 +65,34 @@ function Get-DefaultInstallDir {
     return (Get-DefaultHomeDir)
 }
 
-function Get-DefaultHomeDir {
+function Get-DefaultDependencyInstallDir {
+    param(
+        [string]$Name
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        return (Join-Path $env:LOCALAPPDATA "Programs\$Name\bin")
+    }
+
+    return (Join-Path (Get-Location) "$Name\bin")
+}
+
+function Get-DefaultProgramRoot {
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        return (Join-Path $env:LOCALAPPDATA "Programs\$RemoteRepoName")
+    }
+
     return (Join-Path (Get-Location) $RemoteRepoName)
+}
+
+function Get-DefaultHomeDir {
+    $programRoot = Get-DefaultProgramRoot
+
+    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+        return (Join-Path $programRoot "app")
+    }
+
+    return $programRoot
 }
 
 function Test-RepositoryWorkspace {
@@ -121,34 +147,6 @@ function Get-LocalScriptsDir {
         if (Test-Path $candidate -PathType Container) {
             return (Resolve-Path $candidate).Path
         }
-    }
-
-    return $null
-}
-
-function Build-LocalReleaseBinary {
-    $cargo = Get-Command cargo -ErrorAction SilentlyContinue
-    if (-not $cargo) {
-        return $null
-    }
-
-    if (-not (Test-RepositoryWorkspace)) {
-        return $null
-    }
-
-    Write-Host "[dhtgbot] no local binary found, building release binary with cargo build --release --bin dhtgbot"
-
-    Push-Location $RepoRoot
-    try {
-        & $cargo.Source build --release --bin dhtgbot
-    }
-    finally {
-        Pop-Location
-    }
-
-    $builtBinary = Join-Path $RepoRoot "target\release\$BinaryName"
-    if (Test-Path $builtBinary -PathType Leaf) {
-        return (Resolve-Path $builtBinary).Path
     }
 
     return $null
@@ -213,6 +211,53 @@ function Get-Aria2DownloadUrl {
     return "${ProxyPrefix}https://github.com/aria2/aria2/releases/download/$Aria2Tag/$assetName"
 }
 
+function Invoke-DownloadWithRetry {
+    param(
+        [string]$Url,
+        [string]$OutputPath
+    )
+
+    $maxAttempts = 5
+    $parsedRetryCount = 0
+    if ($env:DHTGBOT_DOWNLOAD_RETRIES -and [int]::TryParse($env:DHTGBOT_DOWNLOAD_RETRIES, [ref]$parsedRetryCount)) {
+        $maxAttempts = [Math]::Max($parsedRetryCount, 1)
+    }
+
+    $parentDir = Split-Path -Parent $OutputPath
+    if (-not [string]::IsNullOrWhiteSpace($parentDir)) {
+        New-Item -ItemType Directory -Force -Path $parentDir | Out-Null
+    }
+
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        Remove-Item -LiteralPath $OutputPath -Force -ErrorAction SilentlyContinue
+
+        try {
+            Invoke-WebRequest -Uri $Url -OutFile $OutputPath -UseBasicParsing
+
+            if (-not (Test-Path $OutputPath -PathType Leaf)) {
+                throw "download did not produce a file"
+            }
+
+            $fileInfo = Get-Item -LiteralPath $OutputPath -ErrorAction Stop
+            if ($fileInfo.Length -le 0) {
+                throw "download produced an empty file"
+            }
+
+            return
+        }
+        catch {
+            Remove-Item -LiteralPath $OutputPath -Force -ErrorAction SilentlyContinue
+
+            if ($attempt -ge $maxAttempts) {
+                throw "[dhtgbot] failed to download $Url after $attempt attempts. $($_.Exception.Message)"
+            }
+
+            Write-Warning "[dhtgbot] download failed on attempt $attempt/$maxAttempts, retrying: $($_.Exception.Message)"
+            Start-Sleep -Seconds ([Math]::Min($attempt * 2, 10))
+        }
+    }
+}
+
 function Expand-RemotePackage {
     param(
         [string]$Url,
@@ -225,8 +270,14 @@ function Expand-RemotePackage {
 
     New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
     Write-Host "[dhtgbot] downloading $Url"
-    Invoke-WebRequest -Uri $Url -OutFile $archivePath -UseBasicParsing
-    Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDir -Force
+    Invoke-DownloadWithRetry -Url $Url -OutputPath $archivePath
+
+    try {
+        Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDir -Force
+    }
+    catch {
+        throw "[dhtgbot] failed to extract $AssetName. $($_.Exception.Message)"
+    }
 
     $script:RemoteTempPaths.Add($tempRoot) | Out-Null
     return $extractDir
@@ -365,19 +416,21 @@ function Get-ExistingCommandPath {
     return $null
 }
 
-function Use-LocalDependencyDirs {
-    $localBinDir = Join-Path $HomeDir "bin"
+function Add-DependencyInstallDirsToUserPath {
+    $entries = [System.Collections.Generic.List[string]]::new()
 
-    if ([string]::IsNullOrWhiteSpace($AmagiInstallDir)) {
-        $script:AmagiInstallDir = $localBinDir
+    foreach ($entry in @($AmagiInstallDir, $TdlrInstallDir, $Aria2InstallDir)) {
+        if ([string]::IsNullOrWhiteSpace($entry)) {
+            continue
+        }
+
+        if (-not $entries.Contains($entry)) {
+            [void]$entries.Add($entry)
+        }
     }
 
-    if ([string]::IsNullOrWhiteSpace($TdlrInstallDir)) {
-        $script:TdlrInstallDir = $localBinDir
-    }
-
-    if ([string]::IsNullOrWhiteSpace($Aria2InstallDir)) {
-        $script:Aria2InstallDir = $localBinDir
+    foreach ($entry in $entries) {
+        Add-InstallDirToUserPath -Entry $entry
     }
 }
 
@@ -422,10 +475,10 @@ function Resolve-ExecutionMode {
         "auto" {
             $hasScriptBinary = $ScriptDir -and (Test-Path (Join-Path $ScriptDir $BinaryName) -PathType Leaf)
             $hasRepoBinary = $RepoRoot -and (Test-Path (Join-Path $RepoRoot $BinaryName) -PathType Leaf)
-            $hasRepoRoot = Test-RepositoryWorkspace
             $hasBuiltBinary = $RepoRoot -and (Test-Path (Join-Path $RepoRoot "target\release\$BinaryName") -PathType Leaf)
+            $hasDebugBinary = $RepoRoot -and (Test-Path (Join-Path $RepoRoot "target\debug\$BinaryName") -PathType Leaf)
 
-            if ($hasScriptBinary -or $hasRepoBinary -or $hasRepoRoot -or $hasBuiltBinary) {
+            if ($hasScriptBinary -or $hasRepoBinary -or $hasBuiltBinary -or $hasDebugBinary) {
                 return "local"
             }
 
@@ -622,12 +675,23 @@ if ([string]::IsNullOrWhiteSpace($InstallDir)) {
     $InstallDir = Get-DefaultInstallDir
 }
 
-Use-LocalDependencyDirs
+if ([string]::IsNullOrWhiteSpace($AmagiInstallDir)) {
+    $AmagiInstallDir = Get-DefaultDependencyInstallDir -Name "amagi"
+}
+
+if ([string]::IsNullOrWhiteSpace($TdlrInstallDir)) {
+    $TdlrInstallDir = Get-DefaultDependencyInstallDir -Name "tdlr"
+}
+
+if ([string]::IsNullOrWhiteSpace($Aria2InstallDir)) {
+    $Aria2InstallDir = Get-DefaultDependencyInstallDir -Name "aria2"
+}
 
 if (-not $SkipDependenciesRequested) {
     Install-Amagi
     Install-Tdlr
     Install-Aria2
+    Add-DependencyInstallDirsToUserPath
 }
 
 $InstallMode = Resolve-ExecutionMode
@@ -642,11 +706,7 @@ try {
         $SourceScriptsDir = Get-LocalScriptsDir
 
         if (-not $SourceBinary) {
-            $SourceBinary = Build-LocalReleaseBinary
-        }
-
-        if (-not $SourceBinary) {
-            throw "[dhtgbot] no local binary found in the extracted package or target\release."
+            throw "[dhtgbot] no local prebuilt binary found. Place dhtgbot.exe in the package/root directory, or use -Source Remote."
         }
     }
     else {
@@ -672,6 +732,7 @@ try {
     }
 
     Install-DhtgbotRuntime -SourceBinary $SourceBinary -SourceTemplate $SourceTemplate -SourceScriptsDir $SourceScriptsDir
+    Add-InstallDirToUserPath -Entry $InstallDir
     Write-Host "[dhtgbot] installed launcher to $(Join-Path $InstallDir $LauncherName)"
     Write-Host "[dhtgbot] application home: $HomeDir"
     Write-Host "[dhtgbot] copy the example config before the first real run:"
@@ -679,7 +740,10 @@ try {
     Write-Host "[dhtgbot] then edit $(Join-Path $HomeDir 'config.yaml')"
     Write-Host "[dhtgbot] confirm services.amagi.start_command, services.tdlr.start_command, and services.aria2.start_command in config.yaml"
     Write-Host "[dhtgbot] if you use X polling, fill bots.xdl.twitter.cookies in config.yaml"
-    Write-Host "[dhtgbot] local runtime binaries are installed in $(Join-Path $HomeDir 'bin')"
+    Write-Host "[dhtgbot] dependencies are installed as environment commands:"
+    Write-Host "  amagi -> $AmagiInstallDir"
+    Write-Host "  tdlr  -> $TdlrInstallDir"
+    Write-Host "  aria2 -> $Aria2InstallDir"
     Write-Host "[dhtgbot] run the bot from the application directory:"
     Write-Host "  Set-Location $HomeDir"
     Write-Host "  .\dhtgbot.cmd"

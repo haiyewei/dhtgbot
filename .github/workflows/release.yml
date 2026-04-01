@@ -91,8 +91,9 @@ jobs:
           cp target/${{ matrix.target }}/release/${BIN_NAME} package/${BIN_NAME}
           cp config.example.yaml package/config.example.yaml
           cp scripts/install.sh package/scripts/install.sh
+          cp scripts/upgrade.sh package/scripts/upgrade.sh
           cp scripts/install-systemd.sh package/scripts/install-systemd.sh
-          chmod +x package/scripts/install.sh package/scripts/install-systemd.sh
+          chmod +x package/scripts/install.sh package/scripts/upgrade.sh package/scripts/install-systemd.sh
           tar -czvf ${{ matrix.artifact }} -C package .
 
       - name: Package (zip)
@@ -105,6 +106,7 @@ jobs:
           Copy-Item "target/${{ matrix.target }}/release/${{ env.BIN_NAME }}.exe" "package/${{ env.BIN_NAME }}.exe"
           Copy-Item "config.example.yaml" "package/config.example.yaml"
           Copy-Item "scripts/install.ps1" "package/scripts/install.ps1"
+          Copy-Item "scripts/upgrade.ps1" "package/scripts/upgrade.ps1"
           Compress-Archive -Path package\* -DestinationPath ${{ matrix.artifact }}
 
       - name: Upload

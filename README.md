@@ -48,6 +48,8 @@
 发布包内置：
 
 - `scripts/install.ps1`
+- `scripts/uninstall.ps1`
+- `scripts/upgrade.ps1`
 
 它会执行以下操作：
 
@@ -57,7 +59,11 @@
 4. 下载或安装 `dhtgbot`
 5. 创建应用目录、示例配置、启动入口，并把命令加入用户 `PATH`
 
+默认会把运行目录放到 `%LOCALAPPDATA%\Programs\dhtgbot\app`。
+依赖会安装到各自的环境命令目录，例如 `%LOCALAPPDATA%\Programs\amagi\bin`、`%LOCALAPPDATA%\Programs\tdlr\bin`、`%LOCALAPPDATA%\Programs\aria2\bin`，并写入 `PATH`。
+
 如果环境里已经存在 `amagi`、`tdlr` 或 `aria2c`，脚本会先下载，再询问是否覆盖，默认不覆盖。
+脚本只会使用现成二进制：要么使用本地已有的预编译 `dhtgbot.exe`，要么直接下载 GitHub Release，不会触发 `cargo build`。
 
 示例：
 
@@ -70,6 +76,35 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 ```powershell
 irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
 ```
+
+升级现有安装：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\upgrade.ps1
+```
+
+卸载现有安装：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\uninstall.ps1
+```
+
+`upgrade.ps1` 会优先探测当前目录、当前目录下的 `.\dhtgbot`、`%LOCALAPPDATA%\Programs\dhtgbot\app`，以及 `PATH` 中已有的 `dhtgbot` 启动入口。
+
+远程执行升级：
+
+```powershell
+irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/upgrade.ps1 | iex
+```
+
+默认会升级全部运行时二进制：
+
+- `dhtgbot`
+- `amagi`
+- `tdlr`
+- `aria2`
+
+如果只想升级主程序，可加 `-SkipDependencies`。
 
 如果需要给远程执行传参，使用环境变量：
 
@@ -85,6 +120,8 @@ irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps
 发布包内置：
 
 - `scripts/install.sh`
+- `scripts/uninstall.sh`
+- `scripts/upgrade.sh`
 - `scripts/install-systemd.sh`（仅 Linux）
 
 普通安装：
@@ -97,6 +134,24 @@ bash ./scripts/install.sh
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.sh | bash
+```
+
+升级现有安装：
+
+```bash
+bash ./scripts/upgrade.sh
+```
+
+卸载现有安装：
+
+```bash
+bash ./scripts/uninstall.sh
+```
+
+远程执行升级：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/upgrade.sh | bash
 ```
 
 Linux 安装为 `systemd` 服务：
@@ -115,22 +170,30 @@ curl -fsSL https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/ins
 
 1. 下载并安装 `amagi`
 2. 下载并安装 `tdlr`
-3. 下载 `aria2` 1.37.0 源码包并安装到用户环境
+3. 下载 `aria2` 预编译包并安装到用户环境
 4. 把 `dhtgbot` 发布包解压到当前目录下的 `./dhtgbot`
 5. 保留 `./dhtgbot/config.example.yaml` 作为参考
 6. 提示复制为 `./dhtgbot/config.yaml` 并继续配置主程序和下属软件
 
 说明：
 
-- Linux/macOS 上的 `aria2` 当前走源码安装，因此需要基础编译环境
+- `install.sh` 只会使用现成二进制：如果目录中没有预编译 `dhtgbot`，它会直接回退到远程 Release 下载，不会触发 `cargo build`
+- Linux 上的 `aria2` 默认下载 `abcfy2/aria2-static-build` 的预编译包：<https://github.com/abcfy2/aria2-static-build/releases>
+- macOS 上的 `aria2` 优先使用 `brew install aria2`
+- 如果 macOS 环境没有 `brew`，脚本会直接报错并提示先安装 Homebrew：<https://brew.sh/>
 - 已存在的 `amagi`、`tdlr`、`aria2c` 会先下载，再询问是否覆盖，默认不覆盖
+- `install.sh` 会把依赖安装到环境命令目录，并把对应目录写入 shell profile；`config.yaml` 里的 `start_command` 应直接写 `amagi` / `tdlr` / `aria2c`
 - 远程安装解压完成后会删除原始压缩包，不会把 `*.tar.gz` 留在项目目录里
 - `install.sh` 默认不会把 `dhtgbot` 自己装进 `PATH`
 - `install.sh` 成功结束后会打开一个位于项目目录中的交互 shell；退出该 shell 会回到原来的位置
 - 如果需要旧的“运行时安装”行为，可使用 `bash ./scripts/install.sh --layout runtime`
+- `upgrade.sh` 默认会升级 `dhtgbot`、`amagi`、`tdlr`、`aria2`，并强制覆盖旧二进制
+- `upgrade.sh` 会优先检测当前目录、脚本所在目录以及 `~/.local/share/dhtgbot` 中的现有安装；也可以手动传 `--workspace-dir` 或 `--home-dir`
+- `upgrade.sh` 也会尝试通过 `PATH` 中已有的 `dhtgbot` 反推现有安装目录
+- `uninstall.sh` / `uninstall.ps1` 默认会在移除 `dhtgbot` 之后，逐个询问是否继续卸载 `amagi`、`tdlr`、`aria2`；非交互环境下会默认保留它们
 - `install-systemd.sh` 会先判断自己是否位于现有项目目录的 `scripts/` 下
 - 如果是本地现有目录执行，它会直接复用 `../` 作为 `systemd` 的工作目录，并用该目录里的 `dhtgbot` 二进制创建后台服务
-- 如果是远程执行或未检测到现有目录，它才会继续走运行时布局安装，把主程序安装到服务用户的应用目录中
+- 如果是远程执行或未检测到现有目录，它才会继续走运行时布局安装，把主程序安装到服务用户的应用目录中，并把依赖命令目录写进 `systemd` 的 `PATH`
 
 ### 覆盖策略
 
@@ -157,7 +220,9 @@ DHTGBOT_INSTALL_OVERWRITE=never    # 永不覆盖
 
 - `amagi` 从 `amagi-rs` 的 GitHub Release 下载：<https://github.com/bandange/amagi-rs/releases>
 - `tdlr` 从 `tdlr` 的 GitHub Release 下载：<https://github.com/haiyewei/tdlr/releases>
-- `aria2` 使用官方 GitHub Release `release-1.37.0`：<https://github.com/aria2/aria2/releases/tag/release-1.37.0>
+- Windows 上的 `aria2` 使用官方 GitHub Release `release-1.37.0`：<https://github.com/aria2/aria2/releases/tag/release-1.37.0>
+- Linux 上的 `aria2` 使用 `abcfy2/aria2-static-build` 的 GitHub Release `1.37.0`：<https://github.com/abcfy2/aria2-static-build/releases/tag/1.37.0>
+- macOS 上的 `aria2` 通过 Homebrew 安装：<https://formulae.brew.sh/formula/aria2>
 
 ## Docker
 
