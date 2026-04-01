@@ -109,7 +109,7 @@ If you only want to upgrade the main program, add `-SkipDependencies`.
 If you need options for remote execution, use environment variables:
 
 ```powershell
-$env:DHTGBOT_INSTALL_VERSION = "v0.2.2"
+$env:DHTGBOT_INSTALL_VERSION = "v0.2.3"
 $env:DHTGBOT_INSTALL_SKIP_DEPENDENCIES = "1"
 $env:DHTGBOT_INSTALL_PROXY = "1"
 irm https://raw.githubusercontent.com/haiyewei/dhtgbot/master/scripts/install.ps1 | iex
@@ -214,8 +214,8 @@ Installer scripts download binaries from the matching workflow output based on v
   downloads the latest stable GitHub Release: <https://github.com/haiyewei/dhtgbot/releases/latest>
 - `DHTGBOT_INSTALL_VERSION=daily`
   downloads assets published by the `Daily Build` workflow under the `daily` tag: <https://github.com/haiyewei/dhtgbot/releases/tag/daily>
-- `DHTGBOT_INSTALL_VERSION=v0.2.2`
-  downloads assets from a specific tagged Release, for example: <https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.2>
+- `DHTGBOT_INSTALL_VERSION=v0.2.3`
+  downloads assets from a specific tagged Release, for example: <https://github.com/haiyewei/dhtgbot/releases/tag/v0.2.3>
 
 Dependencies follow the same pattern:
 
